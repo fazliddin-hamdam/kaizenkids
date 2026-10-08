@@ -32,10 +32,12 @@ function childLabel(family: Family): string {
  *  3. Mesaj gönderilemezse (ör. ebeveyn botu engellediyse) isteği geri alır.
  */
 export async function handleChildDone(family: Family, taskId: number): Promise<void> {
-  const task = repo.getTask(taskId);
-  if (!task) throw new AppError(404, 'Böyle bir görev bulunamadı.');
+  const today = todayKey();
+  // Pasif görevler ve hafta sonu okul görevleri bugün yapılamaz.
+  const task = repo.listTasksForDate(today).find((t) => t.id === taskId);
+  if (!task) throw new AppError(404, 'Bu görev bugün yapılacaklar listesinde yok.');
 
-  const result = repo.requestApproval(family.id, task.id, todayKey());
+  const result = repo.requestApproval(family.id, task.id, today);
   if (!result.ok) {
     throw new AppError(
       409,

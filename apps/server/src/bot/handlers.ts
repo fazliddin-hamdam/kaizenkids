@@ -82,7 +82,7 @@ export function registerBotHandlers(bot: Bot): void {
     const today = todayKey();
     const statusByTask = new Map(repo.getLogsForDate(family.id, today).map((l) => [l.task_id, l.status]));
     const lines = repo
-      .listTasks()
+      .listTasksForDate(today)
       .map((t) => `${STATUS_ICON[statusByTask.get(t.id) ?? 'todo']} ${t.emoji} ${escapeHtml(t.title)} (+${t.points})`);
     const points = repo.getPointsSummary(family);
     const streak = repo.getStreak(family.id, today);

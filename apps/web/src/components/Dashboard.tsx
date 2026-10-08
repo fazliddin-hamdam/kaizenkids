@@ -5,7 +5,7 @@ import { haptic } from '../lib/telegram';
 import type { Period, TaskView } from '../types';
 import { Celebration } from './Celebration';
 import { PeriodTabs } from './PeriodTabs';
-import { PERIODS } from './periods';
+import { periodMeta } from './periods';
 import { ProgressCard } from './ProgressCard';
 import { SurpriseBoxModal } from './SurpriseBoxModal';
 import { TaskCard } from './TaskCard';
@@ -13,6 +13,7 @@ import { Toast, type ToastMessage } from './Toast';
 
 const GREETING: Record<Period, string> = {
   morning: 'Günaydın',
+  school: 'İyi günler',
   afternoon: 'İyi günler',
   evening: 'İyi akşamlar',
 };
@@ -64,6 +65,7 @@ export function Dashboard() {
   if (!state) return <SplashScreen error={loadError} onRetry={refresh} />;
 
   const activePeriod = selectedPeriod ?? state.currentPeriod;
+  const activeMeta = periodMeta(activePeriod, state.isSchoolDay);
   const visibleTasks = state.tasks.filter((t) => t.period === activePeriod);
   const approvedToday = state.tasks.filter((t) => t.status === 'approved').length;
 
@@ -86,12 +88,17 @@ export function Dashboard() {
 
       <ProgressCard points={state.points} onOpenBox={() => setBoxModalOpen(true)} />
 
-      <PeriodTabs active={activePeriod} tasks={state.tasks} onChange={setSelectedPeriod} />
+      <PeriodTabs
+        active={activePeriod}
+        tasks={state.tasks}
+        isSchoolDay={state.isSchoolDay}
+        onChange={setSelectedPeriod}
+      />
 
       {/* Görevler */}
       <section>
-        <h2 className={`mb-3 inline-block rounded-full px-4 py-1 text-lg font-extrabold ${PERIODS[activePeriod].soft}`}>
-          {PERIODS[activePeriod].emoji} {PERIODS[activePeriod].label} Görevleri
+        <h2 className={`mb-3 inline-block rounded-full px-4 py-1 text-lg font-extrabold ${activeMeta.soft}`}>
+          {activeMeta.emoji} {activeMeta.label} Görevleri
         </h2>
         <ul className="flex flex-col gap-4">
           {visibleTasks.map((task) => (

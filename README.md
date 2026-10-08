@@ -1,7 +1,7 @@
 # 🌱 KaizenKids — MVP
 
 Atomik Alışkanlıklar felsefesiyle 7-9 yaş çocuklar için Telegram Mini App.
-Çocuk görevini yapınca **"Yaptım!"** der → ebeveyne Telegram'dan onay mesajı gider → ebeveyn **✅ Onayla** derse puan eklenir, çocuğun ekranında kutlama oynar → her 50 puanda bir **🎁 Sürpriz Kutu** açılır.
+Çocuk görevini yapınca **"Yaptım!"** der → ebeveyne Telegram'dan onay mesajı gider → ebeveyn **✅ Onayla** derse puan eklenir, çocuğun ekranında kutlama oynar → her 100 puanda bir **🎁 Sürpriz Kutu** açılır.
 
 ## Klasör Yapısı
 
@@ -43,7 +43,7 @@ AtomBot/
 | Tablo | Amaç |
 |---|---|
 | `families` | Ebeveyn (Telegram ID) = aile; çocuk adı, toplam puan, açılan kutu sayısı |
-| `tasks` | 7 sabit görev (sabah / okul sonrası / akşam), puanlarıyla |
+| `tasks` | 13 sabit görev (sabah / okulda / okul sonrası / akşam); tam okul günü = 100 puan, hafta sonu okul görevleri gizlenir |
 | `daily_logs` | aile + görev + gün başına tek kayıt: `pending` / `approved` / `rejected` |
 | `rewards` | Ebeveynin ödülleri (Sürpriz Kutu içeriği) |
 | `reward_claims` | Açılan kutuların geçmişi |

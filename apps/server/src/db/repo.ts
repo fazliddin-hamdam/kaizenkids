@@ -1,6 +1,6 @@
 import { config } from '../config.js';
 import type { DailyLog, Family, LogStatus, Reward, Task } from '../types.js';
-import { addDays } from '../utils/date.js';
+import { addDays, isSchoolDay } from '../utils/date.js';
 import { db } from './index.js';
 import { DEFAULT_REWARDS } from './schema.js';
 
@@ -44,8 +44,10 @@ export function setChildName(familyId: number, name: string): void {
 //  Görevler ve günlük kayıtlar
 // =====================================================================
 
-export function listTasks(): Task[] {
-  return db.prepare('SELECT * FROM tasks ORDER BY sort_order').all() as Task[];
+/** O gün yapılabilecek aktif görevler (hafta sonu okul görevleri hariç). */
+export function listTasksForDate(date: string): Task[] {
+  const tasks = db.prepare('SELECT * FROM tasks WHERE is_active = 1 ORDER BY sort_order').all() as Task[];
+  return isSchoolDay(date) ? tasks : tasks.filter((t) => !t.school_days_only);
 }
 
 export function getTask(id: number): Task | undefined {

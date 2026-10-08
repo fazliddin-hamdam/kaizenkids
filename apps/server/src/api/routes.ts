@@ -2,7 +2,7 @@ import { Router, type Response } from 'express';
 import * as repo from '../db/repo.js';
 import { AppError, handleChildDone, notifyBoxOpened } from '../services/approval.js';
 import type { DashboardState, Family, OpenBoxResponse } from '../types.js';
-import { currentPeriod, todayKey } from '../utils/date.js';
+import { currentPeriod, isSchoolDay, todayKey } from '../utils/date.js';
 import { telegramAuth, type AuthedLocals } from './auth.js';
 
 type AuthedResponse<T> = Response<T, AuthedLocals>;
@@ -16,11 +16,12 @@ function buildDashboardState(familyId: number): DashboardState {
   return {
     childName: family.child_name ?? 'Kahraman',
     today,
+    isSchoolDay: isSchoolDay(today),
     currentPeriod: currentPeriod(),
     streak: repo.getStreak(family.id, today),
     points: repo.getPointsSummary(family),
     hasRewards: repo.listActiveRewards(family.id).length > 0,
-    tasks: repo.listTasks().map((t) => ({
+    tasks: repo.listTasksForDate(today).map((t) => ({
       id: t.id,
       title: t.title,
       emoji: t.emoji,

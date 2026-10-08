@@ -7,6 +7,23 @@
  *  rewards        → Ebeveynin tanımladığı gerçek dünya ödülleri (Sürpriz Kutu içeriği).
  *  reward_claims  → Açılan kutuların geçmişi (ödül adı anlık olarak kopyalanır).
  */
+
+/** tasks tablosu tanımı (migration'da geçici adla yeniden oluşturmak için fonksiyon). */
+export function tasksTableSql(name: string): string {
+  return /* sql */ `
+CREATE TABLE IF NOT EXISTS ${name} (
+  id                INTEGER PRIMARY KEY AUTOINCREMENT,
+  code              TEXT NOT NULL UNIQUE,
+  title             TEXT NOT NULL,
+  emoji             TEXT NOT NULL,
+  period            TEXT NOT NULL CHECK (period IN ('morning', 'school', 'afternoon', 'evening')),
+  points            INTEGER NOT NULL CHECK (points > 0),
+  sort_order        INTEGER NOT NULL,
+  school_days_only  INTEGER NOT NULL DEFAULT 0,   -- 1: yalnızca hafta içi (okul günleri) gösterilir
+  is_active         INTEGER NOT NULL DEFAULT 1    -- 0: listeden kaldırıldı (eski kayıtlar için saklanır)
+);`;
+}
+
 export const SCHEMA_SQL = /* sql */ `
 CREATE TABLE IF NOT EXISTS families (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -18,15 +35,7 @@ CREATE TABLE IF NOT EXISTS families (
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
-CREATE TABLE IF NOT EXISTS tasks (
-  id          INTEGER PRIMARY KEY AUTOINCREMENT,
-  code        TEXT NOT NULL UNIQUE,
-  title       TEXT NOT NULL,
-  emoji       TEXT NOT NULL,
-  period      TEXT NOT NULL CHECK (period IN ('morning', 'afternoon', 'evening')),
-  points      INTEGER NOT NULL CHECK (points > 0),
-  sort_order  INTEGER NOT NULL
-);
+${tasksTableSql('tasks')}
 
 CREATE TABLE IF NOT EXISTS daily_logs (
   id                   INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,13 +69,29 @@ CREATE TABLE IF NOT EXISTS reward_claims (
 );
 `;
 
-/** MVP v1 sabit görevleri. Sıra ve puanlar burada değiştirilebilir; açılışta veritabanına yansır. */
+/**
+ * Sabit görevler. Sıra ve puanlar burada değiştirilebilir; açılışta veritabanına yansır.
+ * Listeden çıkarılan görevler silinmez, pasif yapılır (geçmiş kayıtlar bozulmasın).
+ *
+ * Puan dağılımı: tam bir okul günü = 100 puan (sabah 15 · okulda 35 · okul sonrası 30 · akşam 20).
+ * Hafta sonu okul görevleri gizlenir (en fazla 70 puan).
+ */
 export const SEED_TASKS = [
+  // ☀️ Sabah — 15
   { code: 'make_bed', title: 'Yatağını Topla', emoji: '🛏️', period: 'morning', points: 5 },
   { code: 'brush_teeth', title: 'Dişlerini Fırçala', emoji: '🪥', period: 'morning', points: 5 },
-  { code: 'finish_breakfast', title: 'Kahvaltını Bitir', emoji: '🥣', period: 'morning', points: 5 },
+  { code: 'finish_breakfast', title: 'Kahvaltını Vaktinde Yap', emoji: '🥣', period: 'morning', points: 5 },
+  // 🏫 Okulda — 35
+  { code: 'go_school', title: 'Okula Git', emoji: '🏫', period: 'school', points: 10, schoolDaysOnly: true },
+  { code: 'listen_class', title: 'Dersleri İyi Dinle', emoji: '👂', period: 'school', points: 10, schoolDaysOnly: true },
+  { code: 'school_star', title: 'Okulda 5 Puan Al (Not/Yıldız)', emoji: '🌟', period: 'school', points: 10, schoolDaysOnly: true },
+  { code: 'lunch', title: 'Öğle Yemeğini Vaktinde Ye', emoji: '🍽️', period: 'school', points: 5 },
+  // 🎒 Okul Sonrası — 30
   { code: 'school_bag', title: 'Okul Çantanı Düzenle', emoji: '🎒', period: 'afternoon', points: 5 },
-  { code: 'read_book', title: '15 Dakika Kitap Oku', emoji: '📚', period: 'afternoon', points: 10 },
+  { code: 'homework', title: 'Ödevlerini Yap', emoji: '✏️', period: 'afternoon', points: 15 },
+  { code: 'sport', title: '15 Dakika Spor Yap', emoji: '⚽', period: 'afternoon', points: 10 },
+  // 🌙 Akşam — 20
+  { code: 'dinner', title: 'Akşam Yemeğini Vaktinde Ye', emoji: '🍲', period: 'evening', points: 5 },
   { code: 'tidy_toys', title: 'Oyuncaklarını Topla', emoji: '🧸', period: 'evening', points: 5 },
   { code: 'sleep_early', title: 'Erken Uyu (21:30)', emoji: '😴', period: 'evening', points: 10 },
 ] as const;

@@ -1,6 +1,6 @@
 // apps/server/src/types.ts içindeki API tipleriyle aynı tutulmalıdır.
 
-export type Period = 'morning' | 'afternoon' | 'evening';
+export type Period = 'morning' | 'school' | 'afternoon' | 'evening';
 export type TaskStatus = 'todo' | 'pending' | 'approved' | 'rejected';
 
 export interface TaskView {
@@ -15,6 +15,7 @@ export interface TaskView {
 export interface DashboardState {
   childName: string;
   today: string;
+  isSchoolDay: boolean;
   currentPeriod: Period;
   streak: number;
   points: {

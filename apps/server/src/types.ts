@@ -1,7 +1,7 @@
 // Veritabanı satırları ve API yanıt tipleri.
 // Not: API tipleri apps/web/src/types.ts ile aynı tutulmalıdır.
 
-export type Period = 'morning' | 'afternoon' | 'evening';
+export type Period = 'morning' | 'school' | 'afternoon' | 'evening';
 export type LogStatus = 'pending' | 'approved' | 'rejected';
 export type TaskStatus = 'todo' | LogStatus;
 
@@ -23,6 +23,8 @@ export interface Task {
   period: Period;
   points: number;
   sort_order: number;
+  school_days_only: number;
+  is_active: number;
 }
 
 export interface DailyLog {
@@ -59,6 +61,8 @@ export interface TaskView {
 export interface DashboardState {
   childName: string;
   today: string;
+  /** Hafta içi mi? Hafta sonu okul görevleri gösterilmez. */
+  isSchoolDay: boolean;
   currentPeriod: Period;
   streak: number;
   points: {

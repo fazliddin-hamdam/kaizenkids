@@ -17,12 +17,19 @@ export function addDays(dateKey: string, days: number): string {
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }
 
-/** Saate göre günün bölümü: 12'ye kadar sabah, 17'ye kadar öğle, sonrası akşam. */
+/** Hafta içi (Pazartesi–Cuma) mi? Resmî tatiller MVP'de dikkate alınmaz. */
+export function isSchoolDay(dateKey: string): boolean {
+  const weekday = new Date(`${dateKey}T00:00:00Z`).getUTCDay(); // 0 = Pazar, 6 = Cumartesi
+  return weekday >= 1 && weekday <= 5;
+}
+
+/** Saate göre günün bölümü: 08'e kadar sabah, 15'e kadar okul/öğlen, 19'a kadar okul sonrası, sonrası akşam. */
 export function currentPeriod(now = new Date()): Period {
   const hour = Number(
     new Intl.DateTimeFormat('en-GB', { timeZone: config.timezone, hour: '2-digit', hourCycle: 'h23' }).format(now),
   );
-  if (hour < 12) return 'morning';
-  if (hour < 17) return 'afternoon';
+  if (hour < 8) return 'morning';
+  if (hour < 15) return 'school';
+  if (hour < 19) return 'afternoon';
   return 'evening';
 }
