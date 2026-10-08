@@ -10,7 +10,12 @@
     "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @kaizenkids/server\" \"npm run dev -w @kaizenkids/web\"",
     "build": "npm run build -w @kaizenkids/web && npm run build -w @kaizenkids/server",
     "start": "npm run start -w @kaizenkids/server",
-    "typecheck": "npm run typecheck -w @kaizenkids/server && npm run typecheck -w @kaizenkids/web"
+    "typecheck": "npm run typecheck -w @kaizenkids/server && npm run typecheck -w @kaizenkids/web",
+    "local:start": "node scripts/local-server.mjs start",
+    "local:stop": "node scripts/local-server.mjs stop",
+    "local:status": "node scripts/local-server.mjs status",
+    "local:install": "node scripts/local-server.mjs install",
+    "local:uninstall": "node scripts/local-server.mjs uninstall"
   },
   "devDependencies": {
     "concurrently": "^10.0.6"

@@ -32,6 +32,10 @@ export const getOrCreateFamily = db.transaction((telegramId: number, parentName?
   return getFamilyById(familyId)!;
 });
 
+export function listFamilies(): Family[] {
+  return db.prepare('SELECT * FROM families ORDER BY id').all() as Family[];
+}
+
 export function setChildName(familyId: number, name: string): void {
   db.prepare('UPDATE families SET child_name = ? WHERE id = ?').run(name, familyId);
 }

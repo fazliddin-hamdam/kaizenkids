@@ -54,7 +54,9 @@ export function registerBotHandlers(bot: Bot): void {
       ].join('\n'),
       { parse_mode: 'HTML', reply_markup: openAppKeyboard() },
     );
-    if (!hasValidWebAppUrl) {
+    if (hasValidWebAppUrl) {
+      await setChatMenuButton(bot, ctx.chat.id);
+    } else {
       await ctx.reply('⚠️ WEBAPP_URL ayarlı değil (HTTPS olmalı). Mini App butonu gösterilemiyor.');
     }
   });
@@ -152,9 +154,22 @@ export async function configureBotProfile(bot: Bot): Promise<void> {
     { command: 'yardim', description: 'Yardım' },
   ]);
 
-  if (hasValidWebAppUrl) {
-    await bot.api.setChatMenuButton({
-      menu_button: { type: 'web_app', text: 'KaizenKids', web_app: { url: config.webAppUrl } },
-    });
+  if (!hasValidWebAppUrl) return;
+
+  await setChatMenuButton(bot);
+  // Telegram, botun varsayılan menü butonu değişikliğini mevcut sohbetlere geç (bazen hiç)
+  // yansıtıyor. Tünel adresi her açılışta değiştiği için butonu her ebeveyn sohbetine ayrıca yazıyoruz.
+  for (const family of repo.listFamilies()) {
+    await setChatMenuButton(bot, family.telegram_id);
   }
+}
+
+/** chatId verilirse yalnızca o sohbetin, verilmezse botun varsayılan menü butonunu ayarlar. */
+async function setChatMenuButton(bot: Bot, chatId?: number): Promise<void> {
+  await bot.api
+    .setChatMenuButton({
+      chat_id: chatId,
+      menu_button: { type: 'web_app', text: 'KaizenKids', web_app: { url: config.webAppUrl } },
+    })
+    .catch((error) => console.warn(`Menü butonu ayarlanamadı (${chatId ?? 'varsayılan'}):`, error.message));
 }

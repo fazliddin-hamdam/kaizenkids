@@ -74,6 +74,22 @@ Puanlar yalnızca ebeveyn onayında, tek bir transaction içinde eklenir; aynı 
 `.env` içinde `DEV_AUTH_BYPASS=true` ve `DEV_USER_ID=<kendi Telegram ID'niz>` yapın, `http://localhost:5173` adresini açın.
 Onay mesajları bu ID'ye gider (önce bota `/start` yazmış olmalısınız).
 
+### Kendi bilgisayarında sürekli çalıştırma (ücretsiz)
+
+Proje köküne `cloudflared.exe` koyduktan sonra:
+
+| Komut | Ne yapar |
+|---|---|
+| `npm run local:install` | Windows oturumu açılınca otomatik başlatır + şimdi arka planda başlatır |
+| `npm run local:status` | Çalışıyor mu, güncel adres ne? |
+| `npm run local:stop` | Durdurur (geliştirme için `npm run dev` öncesi gerekli) |
+| `npm run local:start` | Ön planda başlatır (kapatınca durur) |
+| `npm run local:uninstall` | Otomatik başlatmayı kaldırır ve durdurur |
+
+Betik ([scripts/local-server.mjs](scripts/local-server.mjs)) uygulamayı derler, ücretsiz tüneli açar, yeni adresi
+bota bildirir (menü butonu her ebeveyn sohbetinde güncellenir) ve çökme olursa her şeyi yeniden başlatır.
+Kayıtlar: `logs/kaizenkids.log`. Bilgisayar uykuya geçerse bot da durur.
+
 ### Üretim
 
 ```bash
