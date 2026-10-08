@@ -126,18 +126,28 @@ export function registerApprovalHandlers(target: Bot): void {
       .editMessageText(decisionText(result.child, result.task, result.approved), { parse_mode: 'HTML' })
       .catch((error) => console.warn('Onay mesajı güncellenemedi:', error));
 
+    // Kazanılan kutunun hediye listesi boşsa ebeveyni uyar (yoksa çocuk boş kutuyla karşılaşır).
+    const emptyWarning = (kind: 'small' | 'big') =>
+      repo.listActiveRewards(family.id, kind).length === 0
+        ? `
+
+⚠️ Bu kutu için henüz hediye yazmadınız. Lütfen /hediyeler ile ekleyin.`
+        : '';
+
     if (result.approved && result.bigBoxUnlocked) {
       await ctx.reply(
         `👑🎉 MUHTEŞEM! ${result.child.avatar} ${childName(result.child)} toplam <b>${result.child.total_points} puana</b> ulaştı ` +
           `ve bir <b>Büyük Hediye Kutusu</b> kazandı!\n` +
           `Uygulamadan kutuyu açtığında içinden çıkan büyük ödülü size bildireceğim. ` +
-          `Büyük ödül listesi: /buyukoduller`,
+          `Büyük ödül listesi: /buyukoduller` +
+          emptyWarning('big'),
         { parse_mode: 'HTML' },
       );
     } else if (result.approved && result.boxUnlocked) {
       await ctx.reply(
         `🎉 Harika haber! ${childName(result.child)} toplam ${result.child.total_points} puana ulaştı ve yeni bir <b>Sürpriz Kutu</b> kazandı.\n` +
-          `Uygulamadan kutuyu açtığında içinden çıkan ödülü size bildireceğim. 🎁`,
+          `Uygulamadan kutuyu açtığında içinden çıkan ödülü size bildireceğim. 🎁` +
+          emptyWarning('small'),
         { parse_mode: 'HTML' },
       );
     }

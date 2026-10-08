@@ -134,13 +134,14 @@ export const DEFAULT_AVATAR = '🙂';
 /** Bir ailede en fazla kaç aktif çocuk olabilir. */
 export const MAX_CHILDREN = 6;
 
-/** Yeni bir aile oluşturulduğunda eklenen örnek ödüller (ebeveyn botla değiştirebilir). */
-export const DEFAULT_REWARDS = [
-  'Parkta yarım saat ekstra oyun',
-  'Sinema gecesi',
-  'En sevdiğin tatlı',
-  'Yatmadan önce ekstra bir masal',
-];
+/**
+ * Hediyeleri ebeveyn kendisi yazar; her liste için hedef sayı ve üst sınır.
+ * Aşağıdaki örnekler yalnızca bot mesajlarında fikir vermek içindir, veritabanına eklenmez.
+ */
+export const TARGET_REWARDS = 5;
+export const MAX_REWARDS = 10;
 
-/** Büyük Hediye Kutusu için örnek ödüller (her BIG_BOX_THRESHOLD puanda bir açılır). */
-export const DEFAULT_BIG_REWARDS = ['Lunaparka gitmek', 'İstediği bir oyuncak', 'Hayvanat bahçesi gezisi'];
+export const REWARD_EXAMPLES = {
+  small: ['Parkta 30 dakika ekstra oyun', 'En sevdiği tatlı', 'Yatmadan önce ekstra masal', 'Akşam yemeğini o seçer'],
+  big: ['Lunaparka gitmek', 'İstediği bir oyuncak', 'Hayvanat bahçesi gezisi', 'Arkadaşıyla pijama partisi'],
+} as const;

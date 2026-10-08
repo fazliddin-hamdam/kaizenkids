@@ -4,7 +4,6 @@ import Database from 'better-sqlite3';
 import { config } from '../config.js';
 import {
   DEFAULT_AVATAR,
-  DEFAULT_BIG_REWARDS,
   SCHEMA_SQL,
   SEED_TASKS,
   dailyLogsTableSql,
@@ -17,6 +16,12 @@ fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 export const db = new Database(config.dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+
+/** Eski sürümlerin otomatik eklediği örnek hediyeler (migration'lar için sabit kopya). */
+const FROZEN_SEEDED_REWARDS = {
+  small: ['Parkta yarım saat ekstra oyun', 'Sinema gecesi', 'En sevdiğin tatlı', 'Yatmadan önce ekstra bir masal'],
+  big: ['Lunaparka gitmek', 'İstediği bir oyuncak', 'Hayvanat bahçesi gezisi'],
+};
 
 /**
  * Mevcut veritabanlarını güncel şemaya taşıyan adımlar. Sıra önemlidir; yalnızca sona ekleyin.
@@ -83,10 +88,10 @@ const MIGRATIONS: Array<() => void> = [
       ALTER TABLE rewards ADD COLUMN kind TEXT NOT NULL DEFAULT 'small' CHECK (kind IN ('small', 'big'));
       ALTER TABLE reward_claims ADD COLUMN kind TEXT NOT NULL DEFAULT 'small';
     `);
-    // Mevcut ailelere örnek büyük ödülleri ekle (ebeveyn /buyukoduller ile değiştirebilir).
+    // Mevcut ailelere örnek büyük ödülleri ekle (o anki davranış; 5. adımda pasif yapılır).
     const insert = db.prepare(`INSERT INTO rewards (family_id, title, kind) VALUES (?, ?, 'big')`);
     for (const { id } of db.prepare('SELECT id FROM families').all() as { id: number }[]) {
-      for (const title of DEFAULT_BIG_REWARDS) insert.run(id, title);
+      for (const title of FROZEN_SEEDED_REWARDS.big) insert.run(id, title);
     }
   },
 
@@ -97,6 +102,13 @@ const MIGRATIONS: Array<() => void> = [
       ALTER TABLE children ADD COLUMN gender TEXT CHECK (gender IN ('boy', 'girl'));
       UPDATE children SET avatar = '${DEFAULT_AVATAR}';
     `);
+  },
+
+  // 5) Hediyeleri ebeveyn yazar: daha önce otomatik eklenen örnek hediyeler pasif yapılır (silinmez).
+  () => {
+    const deactivate = db.prepare('UPDATE rewards SET is_active = 0 WHERE kind = ? AND title = ?');
+    for (const title of FROZEN_SEEDED_REWARDS.small) deactivate.run('small', title);
+    for (const title of FROZEN_SEEDED_REWARDS.big) deactivate.run('big', title);
   },
 ];
 

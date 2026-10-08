@@ -2,7 +2,7 @@ import { config } from '../config.js';
 import type { Child, DailyLog, Family, Gender, LogStatus, Reward, RewardKind, Task } from '../types.js';
 import { addDays, isSchoolDay } from '../utils/date.js';
 import { db } from './index.js';
-import { AVATARS, DEFAULT_AVATAR, DEFAULT_BIG_REWARDS, DEFAULT_REWARDS, MAX_CHILDREN } from './schema.js';
+import { AVATARS, DEFAULT_AVATAR, MAX_CHILDREN, MAX_REWARDS } from './schema.js';
 
 // =====================================================================
 //  Aileler (ebeveyn = Telegram kullanıcısı)
@@ -16,7 +16,7 @@ export function getFamilyByTelegramId(telegramId: number): Family | undefined {
   return db.prepare('SELECT * FROM families WHERE telegram_id = ?').get(telegramId) as Family | undefined;
 }
 
-/** Aileyi getirir; yoksa oluşturup örnek ödülleri ekler. */
+/** Aileyi getirir; yoksa oluşturur. Hediyeleri ebeveyn /hediyeler ile kendisi yazar. */
 export const getOrCreateFamily = db.transaction((telegramId: number, parentName?: string): Family => {
   const existing = getFamilyByTelegramId(telegramId);
   if (existing) return existing;
@@ -24,13 +24,7 @@ export const getOrCreateFamily = db.transaction((telegramId: number, parentName?
   const { lastInsertRowid } = db
     .prepare('INSERT INTO families (telegram_id, parent_name) VALUES (?, ?)')
     .run(telegramId, parentName ?? null);
-  const familyId = Number(lastInsertRowid);
-
-  const insertReward = db.prepare('INSERT INTO rewards (family_id, title, kind) VALUES (?, ?, ?)');
-  for (const title of DEFAULT_REWARDS) insertReward.run(familyId, title, 'small');
-  for (const title of DEFAULT_BIG_REWARDS) insertReward.run(familyId, title, 'big');
-
-  return getFamilyById(familyId)!;
+  return getFamilyById(Number(lastInsertRowid))!;
 });
 
 export function listFamilies(): Family[] {
@@ -278,9 +272,36 @@ export function listActiveRewards(familyId: number, kind: RewardKind = 'small'):
     .all(familyId, kind) as Reward[];
 }
 
-export function addReward(familyId: number, title: string, kind: RewardKind = 'small'): void {
-  db.prepare('INSERT INTO rewards (family_id, title, kind) VALUES (?, ?, ?)').run(familyId, title, kind);
+export interface AddRewardsResult {
+  added: string[];
+  duplicates: string[];
+  /** Liste MAX_REWARDS'a ulaştığı için eklenemeyenler. */
+  overLimit: string[];
+  total: number;
 }
+
+/**
+ * Bir veya birden çok hediye ekler (bot mesajında her satır bir hediye olabilir).
+ * Aynı hediye (büyük/küçük harf farkı gözetmeden) iki kez eklenmez; liste MAX_REWARDS ile sınırlıdır.
+ */
+export const addRewards = db.transaction((familyId: number, titles: string[], kind: RewardKind): AddRewardsResult => {
+  const key = (t: string) => t.toLocaleLowerCase('tr-TR');
+  const existing = new Set(listActiveRewards(familyId, kind).map((r) => key(r.title)));
+  const insert = db.prepare('INSERT INTO rewards (family_id, title, kind) VALUES (?, ?, ?)');
+  const result: AddRewardsResult = { added: [], duplicates: [], overLimit: [], total: existing.size };
+
+  for (const title of titles) {
+    if (existing.has(key(title))) result.duplicates.push(title);
+    else if (existing.size >= MAX_REWARDS) result.overLimit.push(title);
+    else {
+      insert.run(familyId, title, kind);
+      existing.add(key(title));
+      result.added.push(title);
+    }
+  }
+  result.total = existing.size;
+  return result;
+});
 
 export function deactivateReward(familyId: number, rewardId: number): boolean {
   return db.prepare('UPDATE rewards SET is_active = 0 WHERE id = ? AND family_id = ?').run(rewardId, familyId).changes > 0;
@@ -329,7 +350,12 @@ export const openSurpriseBox = db.transaction((childId: number, kind: RewardKind
   const rewards = listActiveRewards(child.family_id, kind);
   if (rewards.length === 0) return { ok: false, reason: 'NO_REWARDS' };
 
-  const reward = rewards[Math.floor(Math.random() * rewards.length)];
+  // Çeşitlilik: birden çok hediye varsa bu çocuğa en son çıkan hediye art arda tekrar çıkmasın.
+  const last = db
+    .prepare('SELECT reward_id FROM reward_claims WHERE child_id = ? AND kind = ? ORDER BY id DESC LIMIT 1')
+    .get(childId, kind) as { reward_id: number | null } | undefined;
+  const pool = rewards.length > 1 ? rewards.filter((r) => r.id !== last?.reward_id) : rewards;
+  const reward = pool[Math.floor(Math.random() * pool.length)];
   const counter = kind === 'big' ? 'big_boxes_opened' : 'boxes_opened';
   db.prepare(`UPDATE children SET ${counter} = ${counter} + 1 WHERE id = ?`).run(childId);
   db.prepare(

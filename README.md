@@ -111,8 +111,9 @@ Express, derlenmiş Mini App'i (`apps/web/dist`) aynı porttan sunar; `WEBAPP_UR
 | `/isimdegistir 2 Elif` | 2. çocuğun adını değiştirir |
 | `/cocuksil 2` | 2. çocuğu listeden kaldırır (veriler saklanır; aynı adla `/isim` yazılınca geri gelir) |
 | `/durum` · `/durum 1` | Tüm çocukların özeti · 1. çocuğun görev listesi |
+| `/hediyeler` | Hediye listeleri, nasıl yazılır, örnekler ve "ekle" butonları (hediyeleri ebeveyn yazar; her liste için 5 farklı hediye önerilir, en fazla 10) |
 | `/oduller` | Sürpriz Kutu ödüllerini listeler |
-| `/odulekle Sinema gecesi` | Ödül ekler |
+| `/odulekle Sinema gecesi` | Ödül ekler (her satıra bir ödül yazılabilir; tek başına yazılırsa bot adım adım sorar) |
 | `/odulsil 2` | Listedeki 2. ödülü siler |
 | `/buyukoduller` | 👑 Büyük Hediye ödüllerini listeler (her 1000 puanda bir kutu) |
 | `/buyukodulekle Lunaparka gitmek` | Büyük ödül ekler |

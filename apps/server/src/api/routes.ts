@@ -111,8 +111,8 @@ apiRouter.post('/children/:childId/box/open', async (req, res: AuthedResponse<Op
     throw new AppError(
       409,
       kind === 'big'
-        ? 'Büyük kutunun içi boş! Annenden/babandan bota /buyukodulekle ile büyük ödül eklemesini iste. 👑'
-        : 'Kutunun içi boş! Annenden/babandan bota /odulekle ile ödül eklemesini iste. 🎁',
+        ? 'Büyük kutunun içi henüz boş! Annenden ya da babandan botta /hediyeler yazıp büyük hediye eklemesini iste. 👑'
+        : 'Kutunun içi henüz boş! Annenden ya da babandan botta /hediyeler yazıp hediye eklemesini iste. 🎁',
     );
   }
 

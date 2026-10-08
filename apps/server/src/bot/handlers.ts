@@ -3,9 +3,10 @@ import { config, hasValidWebAppUrl } from '../config.js';
 import * as repo from '../db/repo.js';
 import { MAX_CHILDREN } from '../db/schema.js';
 import { registerApprovalHandlers } from '../services/approval.js';
-import type { Child, Family, Gender, LogStatus, RewardKind } from '../types.js';
+import type { Child, Family, Gender, LogStatus } from '../types.js';
 import { todayKey } from '../utils/date.js';
 import { escapeHtml } from './bot.js';
+import { registerRewardHandlers, rewardsNudge } from './rewards.js';
 
 const HELP_TEXT = [
   '<b>KaizenKids Komutları</b> 🌱',
@@ -21,51 +22,13 @@ const HELP_TEXT = [
   '/durum — Tüm çocukların bugünkü özeti',
   '/durum <i>numara</i> — Bir çocuğun görev listesi (ör. <code>/durum 1</code>)',
   '',
-  `<b>🎁 Sürpriz Kutu</b> (her ${config.boxThreshold} puanda; tüm çocuklar için ortak liste)`,
-  '/oduller — Ödülleri listele',
-  '/odulekle <i>metin</i> — Ödül ekle (ör. <code>/odulekle Sinema gecesi</code>)',
-  '/odulsil <i>numara</i> — Ödülü sil',
-  '',
-  `<b>👑 Büyük Hediye</b> (her ${config.bigBoxThreshold} puanda)`,
-  '/buyukoduller — Büyük ödülleri listele',
-  '/buyukodulekle <i>metin</i> — Büyük ödül ekle (ör. <code>/buyukodulekle Lunaparka gitmek</code>)',
-  '/buyukodulsil <i>numara</i> — Büyük ödülü sil',
+  '<b>Hediyeler</b> (siz yazarsınız; tüm çocuklar için ortak liste, her biri için 5 farklı hediye önerilir)',
+  '/hediyeler — Listeler, nasıl yazılır, örnekler ve ekleme butonları',
+  `🎁 Sürpriz Kutu (her ${config.boxThreshold} puanda): /oduller · /odulekle <i>metin</i> · /odulsil <i>numara</i>`,
+  `👑 Büyük Hediye (her ${config.bigBoxThreshold} puanda): /buyukoduller · /buyukodulekle <i>metin</i> · /buyukodulsil <i>numara</i>`,
   '',
   '/start — Uygulamayı aç · /yardim — Bu mesaj',
 ].join('\n');
-
-/** Sürpriz Kutu ve Büyük Hediye ödül listeleri aynı komut kalıbını kullanır. */
-const REWARD_COMMANDS: Record<RewardKind, {
-  kind: RewardKind;
-  list: string;
-  add: string;
-  remove: string;
-  title: string;
-  subtitle: string;
-  short: string;
-  example: string;
-}> = {
-  small: {
-    kind: 'small',
-    list: 'oduller',
-    add: 'odulekle',
-    remove: 'odulsil',
-    title: '🎁 Sürpriz Kutu Ödülleri',
-    subtitle: `Her ${config.boxThreshold} puanda bir kutu açılır.`,
-    short: 'Ödül',
-    example: 'Sinema gecesi',
-  },
-  big: {
-    kind: 'big',
-    list: 'buyukoduller',
-    add: 'buyukodulekle',
-    remove: 'buyukodulsil',
-    title: '👑 Büyük Hediye Ödülleri',
-    subtitle: `Her ${config.bigBoxThreshold} puanda bir Büyük Hediye Kutusu açılır.`,
-    short: 'Büyük ödül',
-    example: 'Lunaparka gitmek',
-  },
-};
 
 const STATUS_ICON: Record<LogStatus | 'todo', string> = {
   todo: '⬜️',
@@ -152,6 +115,8 @@ export function registerBotHandlers(bot: Bot): void {
       { parse_mode: 'HTML', reply_markup: openAppKeyboard() },
     );
     await askMissingGenders(ctx, children);
+    const nudge = rewardsNudge(familyOf(ctx).id);
+    if (nudge) await ctx.reply(nudge, { parse_mode: 'HTML' });
     if (hasValidWebAppUrl) {
       await setChatMenuButton(bot, ctx.chat.id);
     } else {
@@ -229,6 +194,8 @@ export function registerBotHandlers(bot: Bot): void {
         { parse_mode: 'HTML', reply_markup: openAppKeyboard() },
       )
       .catch(() => undefined);
+    const nudge = rewardsNudge(child.family_id);
+    if (nudge) await ctx.reply(nudge, { parse_mode: 'HTML' });
   });
 
   pm.command('cocuklar', async (ctx) => {
@@ -347,42 +314,7 @@ export function registerBotHandlers(bot: Bot): void {
 
   // ---------- Ödüller ----------
 
-  for (const meta of Object.values(REWARD_COMMANDS)) {
-    pm.command(meta.list, async (ctx) => {
-      const rewards = repo.listActiveRewards(familyOf(ctx).id, meta.kind);
-      if (rewards.length === 0) {
-        await ctx.reply(`Henüz ödül yok. Eklemek için: /${meta.add} ${meta.example}`);
-        return;
-      }
-      const list = rewards.map((r, i) => `${i + 1}. ${escapeHtml(r.title)}`).join('\n');
-      await ctx.reply(`<b>${meta.title}</b>\n<i>${meta.subtitle}</i>\n\n${list}\n\nSilmek için: /${meta.remove} 2`, {
-        parse_mode: 'HTML',
-      });
-    });
-
-    pm.command(meta.add, async (ctx) => {
-      const title = ctx.match.trim().slice(0, 80);
-      if (!title) {
-        await ctx.reply(`Lütfen ödülü yazın. Örnek: /${meta.add} ${meta.example}`);
-        return;
-      }
-      repo.addReward(familyOf(ctx).id, title, meta.kind);
-      await ctx.reply(`✅ ${meta.short} eklendi: <b>${escapeHtml(title)}</b>`, { parse_mode: 'HTML' });
-    });
-
-    pm.command(meta.remove, async (ctx) => {
-      const family = familyOf(ctx);
-      const index = Number(ctx.match.trim()) - 1;
-      const reward = repo.listActiveRewards(family.id, meta.kind)[index];
-      if (!reward) {
-        await ctx.reply(`Geçersiz numara. Önce /${meta.list} ile listeye bakın.`);
-        return;
-      }
-      repo.deactivateReward(family.id, reward.id);
-      await ctx.reply(`🗑️ ${meta.short} silindi: <b>${escapeHtml(reward.title)}</b>`, { parse_mode: 'HTML' });
-    });
-  }
-
+  registerRewardHandlers(bot);
   registerApprovalHandlers(bot);
 
   bot.catch((err) => console.error('Bot hatası:', err.error));
@@ -398,6 +330,7 @@ export async function configureBotProfile(bot: Bot): Promise<void> {
     { command: 'isimdegistir', description: 'Çocuğun adını değiştir' },
     { command: 'cinsiyet', description: 'Çocuğun cinsiyetini seç' },
     { command: 'cocuksil', description: 'Çocuğu listeden kaldır' },
+    { command: 'hediyeler', description: 'Hediye listelerini yaz ve yönet' },
     { command: 'oduller', description: 'Sürpriz Kutu ödülleri' },
     { command: 'odulekle', description: 'Yeni ödül ekle' },
     { command: 'odulsil', description: 'Ödül sil' },
