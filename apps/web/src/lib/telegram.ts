@@ -1,4 +1,14 @@
-import WebApp from '@twa-dev/sdk';
+import SdkWebApp from '@twa-dev/sdk';
+
+type TelegramWebApp = typeof SdkWebApp;
+
+/**
+ * SDK paketi CommonJS olduğundan Vite, varsayılan import'u `{ default: WebApp }` sarmalayıcısıyla
+ * döndürebiliyor (initData boş görünür). Paket yüklendiğinde gerçek nesne window.Telegram.WebApp'e
+ * kurulur; onu doğrudan kullanıyoruz. SdkWebApp referansı import'un derlemede atılmasını da önler.
+ */
+const WebApp: TelegramWebApp =
+  (window as unknown as { Telegram?: { WebApp?: TelegramWebApp } }).Telegram?.WebApp ?? SdkWebApp;
 
 /**
  * Telegram Web App SDK ile ilgili tüm işlemler burada toplanır.
@@ -10,6 +20,12 @@ export const isInTelegram = (): boolean => Boolean(WebApp.initData);
 
 /** Backend'e imzalı olarak gönderilen ham initData (sunucu HMAC ile doğrular). */
 export const getInitData = (): string => WebApp.initData;
+
+/** Teşhis için açılış bilgisi: initData boş gelirse sunucu kaydına yazılır (hassas veri içermez). */
+export const getLaunchInfo = (): string => {
+  const hashKeys = [...new URLSearchParams(location.hash.slice(1)).keys()].join(',') || '-';
+  return `platform=${WebApp.platform}; version=${WebApp.version}; hashKeys=${hashKeys}`;
+};
 
 /** İmzasız kullanıcı bilgisi — yalnızca arayüzde göstermek için; güvenlik için sunucu doğrulaması esastır. */
 export const getTelegramUser = () => WebApp.initDataUnsafe?.user;

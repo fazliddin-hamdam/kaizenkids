@@ -1,5 +1,5 @@
 import type { DashboardState, OpenBoxResponse } from '../types';
-import { getInitData } from './telegram';
+import { getInitData, getLaunchInfo } from './telegram';
 
 export class ApiError extends Error {
   constructor(
@@ -19,7 +19,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       headers: {
         'Content-Type': 'application/json',
         // Sunucu bu başlıktaki imzayı bot token'ı ile doğrular.
-        ...(initData ? { Authorization: `tma ${initData}` } : {}),
+        ...(initData ? { Authorization: `tma ${initData}` } : { 'X-Telegram-Launch': getLaunchInfo() }),
       },
     });
   } catch {

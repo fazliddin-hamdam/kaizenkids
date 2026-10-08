@@ -19,10 +19,12 @@ export interface TelegramUser {
  *  secret_key = HMAC_SHA256(key="WebAppData", data=bot_token)
  *  hash       = HMAC_SHA256(key=secret_key, data=data_check_string)
  */
-export function validateInitData(initData: string, botToken: string, maxAgeSec: number): TelegramUser | null {
+export type InitDataResult = { ok: true; user: TelegramUser } | { ok: false; reason: string };
+
+export function validateInitData(initData: string, botToken: string, maxAgeSec: number): InitDataResult {
   const params = new URLSearchParams(initData);
   const hash = params.get('hash');
-  if (!hash) return null;
+  if (!hash) return { ok: false, reason: 'hash alanı yok' };
   params.delete('hash');
 
   const dataCheckString = [...params.entries()]
@@ -33,16 +35,20 @@ export function validateInitData(initData: string, botToken: string, maxAgeSec: 
   const secretKey = crypto.createHmac('sha256', 'WebAppData').update(botToken).digest();
   const expected = crypto.createHmac('sha256', secretKey).update(dataCheckString).digest();
   const received = Buffer.from(hash, 'hex');
-  if (received.length !== expected.length || !crypto.timingSafeEqual(received, expected)) return null;
+  if (received.length !== expected.length || !crypto.timingSafeEqual(received, expected)) {
+    return { ok: false, reason: `imza tutmuyor (alanlar: ${[...params.keys()].join(', ')})` };
+  }
 
   const authDate = Number(params.get('auth_date'));
-  if (!authDate || Date.now() / 1000 - authDate > maxAgeSec) return null;
+  if (!authDate) return { ok: false, reason: 'auth_date yok' };
+  const ageSec = Math.round(Date.now() / 1000 - authDate);
+  if (ageSec > maxAgeSec) return { ok: false, reason: `initData süresi dolmuş (${ageSec} sn önce)` };
 
   try {
     const user = JSON.parse(params.get('user') ?? '') as TelegramUser;
-    return typeof user?.id === 'number' ? user : null;
+    return typeof user?.id === 'number' ? { ok: true, user } : { ok: false, reason: 'user alanı geçersiz' };
   } catch {
-    return null;
+    return { ok: false, reason: 'user alanı okunamadı' };
   }
 }
 
@@ -57,14 +63,19 @@ export type AuthedLocals = { family: Family };
 export function telegramAuth(req: Request, res: Response<unknown, AuthedLocals>, next: NextFunction): void {
   const [scheme, initData] = (req.header('authorization') ?? '').split(' ');
   let user: TelegramUser | null = null;
+  let reason = 'Authorization başlığı yok (initData boş geldi)';
 
   if (scheme === 'tma' && initData) {
-    user = validateInitData(initData, config.botToken, config.initDataMaxAgeSec);
+    const result = validateInitData(initData, config.botToken, config.initDataMaxAgeSec);
+    if (result.ok) user = result.user;
+    else reason = result.reason;
   } else if (config.devAuthBypass && !config.isProduction && config.devUserId) {
     user = { id: config.devUserId, first_name: 'Geliştirici' };
   }
 
   if (!user) {
+    const launch = req.header('x-telegram-launch');
+    console.warn(`🔒 ${req.method} ${req.originalUrl} reddedildi: ${reason}${launch ? ` [${launch}]` : ''}`);
     res.status(401).json({ error: 'Bu uygulama Telegram içinden açılmalı.' });
     return;
   }
