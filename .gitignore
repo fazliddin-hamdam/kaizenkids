@@ -7,3 +7,6 @@ data/
 *.db-shm
 .env
 *.log
+
+# Yerel tünel aracı (indirilen program, depoya girmez)
+cloudflared.exe
