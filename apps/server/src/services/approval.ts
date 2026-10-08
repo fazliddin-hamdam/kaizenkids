@@ -1,7 +1,6 @@
 import { InlineKeyboard, type Bot } from 'grammy';
-import { config } from '../config.js';
 import * as repo from '../db/repo.js';
-import type { Child, Family, Task } from '../types.js';
+import type { Child, Family, RewardKind, Task } from '../types.js';
 import { todayKey } from '../utils/date.js';
 import { bot, escapeHtml } from '../bot/bot.js';
 
@@ -75,9 +74,19 @@ function decisionText(child: Child, task: Task, approved: boolean): string {
   if (!approved) {
     return `❌ ${childName(child)}: ${taskName} onaylanmadı.\nGörevi yaptıktan sonra tekrar "Yaptım!" diyebilir.`;
   }
-  const { total, inCycle, threshold, availableBoxes } = repo.getPointsSummary(child);
-  const progress = availableBoxes > 0 ? '🎁 Sürpriz Kutu açılmayı bekliyor!' : `Sürpriz Kutuya ${threshold - inCycle} puan kaldı.`;
-  return `✅ ${childName(child)}: ${taskName} onaylandı! <b>+${task.points} puan</b> ⭐\nToplam: ${total} puan. ${progress}`;
+  const { total, inCycle, threshold, availableBoxes, big } = repo.getPointsSummary(child);
+  const today = repo.getPointsForDate(child.id, todayKey());
+  const box = availableBoxes > 0 ? '🎁 Sürpriz Kutu açılmayı bekliyor!' : `🎁 Sürpriz Kutuya ${threshold - inCycle} puan kaldı.`;
+  const bigBox =
+    big.availableBoxes > 0
+      ? '👑 Büyük Hediye açılmayı bekliyor!'
+      : `👑 Büyük Hediyeye ${big.threshold - big.inCycle} puan kaldı.`;
+  return [
+    `✅ ${childName(child)}: ${taskName} onaylandı! <b>+${task.points} puan</b> ⭐`,
+    `Bugün ${today} puan · Toplam ${total} puan`,
+    box,
+    bigBox,
+  ].join('\n');
 }
 
 /** Onay/ret callback'lerini bota kaydeder. */
@@ -117,9 +126,17 @@ export function registerApprovalHandlers(target: Bot): void {
       .editMessageText(decisionText(result.child, result.task, result.approved), { parse_mode: 'HTML' })
       .catch((error) => console.warn('Onay mesajı güncellenemedi:', error));
 
-    if (result.approved && result.boxUnlocked) {
+    if (result.approved && result.bigBoxUnlocked) {
       await ctx.reply(
-        `🎉 Harika haber! ${childName(result.child)} ${config.boxThreshold} puana ulaştı ve yeni bir <b>Sürpriz Kutu</b> kazandı.\n` +
+        `👑🎉 MUHTEŞEM! ${result.child.avatar} ${childName(result.child)} toplam <b>${result.child.total_points} puana</b> ulaştı ` +
+          `ve bir <b>Büyük Hediye Kutusu</b> kazandı!\n` +
+          `Uygulamadan kutuyu açtığında içinden çıkan büyük ödülü size bildireceğim. ` +
+          `Büyük ödül listesi: /buyukoduller`,
+        { parse_mode: 'HTML' },
+      );
+    } else if (result.approved && result.boxUnlocked) {
+      await ctx.reply(
+        `🎉 Harika haber! ${childName(result.child)} toplam ${result.child.total_points} puana ulaştı ve yeni bir <b>Sürpriz Kutu</b> kazandı.\n` +
           `Uygulamadan kutuyu açtığında içinden çıkan ödülü size bildireceğim. 🎁`,
         { parse_mode: 'HTML' },
       );
@@ -131,13 +148,18 @@ export function registerApprovalHandlers(target: Bot): void {
 //  3) Sürpriz Kutu açıldığında ebeveyni bilgilendir
 // =====================================================================
 
-export async function notifyBoxOpened(family: Family, child: Child, rewardTitle: string): Promise<void> {
+export async function notifyBoxOpened(
+  family: Family,
+  child: Child,
+  rewardTitle: string,
+  kind: RewardKind,
+): Promise<void> {
   const who = `${child.avatar} ${childName(child)}`;
+  const text =
+    kind === 'big'
+      ? `👑 ${who} <b>Büyük Hediye Kutusu</b>nu açtı!\nİçinden çıkan büyük ödül: <b>${escapeHtml(rewardTitle)}</b> 🎉\n\nBu büyük bir başarı, birlikte kutlayın! 🥳`
+      : `🎁 ${who} Sürpriz Kutuyu açtı!\nİçinden çıkan ödül: <b>${escapeHtml(rewardTitle)}</b>\n\nSözünüzü tutmayı unutmayın 😉`;
   await bot.api
-    .sendMessage(
-      family.telegram_id,
-      `🎁 ${who} Sürpriz Kutuyu açtı!\nİçinden çıkan ödül: <b>${escapeHtml(rewardTitle)}</b>\n\nSözünüzü tutmayı unutmayın 😉`,
-      { parse_mode: 'HTML' },
-    )
+    .sendMessage(family.telegram_id, text, { parse_mode: 'HTML' })
     .catch((error) => console.warn('Kutu bildirimi gönderilemedi:', error));
 }

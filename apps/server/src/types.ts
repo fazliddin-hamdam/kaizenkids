@@ -19,9 +19,13 @@ export interface Child {
   avatar: string;
   total_points: number;
   boxes_opened: number;
+  big_boxes_opened: number;
   is_active: number;
   created_at: string;
 }
+
+/** small: her BOX_THRESHOLD puanda Sürpriz Kutu · big: her BIG_BOX_THRESHOLD puanda Büyük Hediye */
+export type RewardKind = 'small' | 'big';
 
 export interface Task {
   id: number;
@@ -53,6 +57,7 @@ export interface Reward {
   title: string;
   is_active: number;
   created_at: string;
+  kind: RewardKind;
 }
 
 // ---------- API ----------
@@ -72,7 +77,9 @@ export interface ChildSummary {
   name: string;
   avatar: string;
   totalPoints: number;
+  todayPoints: number;
   availableBoxes: number;
+  availableBigBoxes: number;
   doneToday: number;
   totalToday: number;
 }
@@ -97,12 +104,15 @@ export interface DashboardState {
     threshold: number;
     /** Kazanılmış ama henüz açılmamış kutu sayısı. */
     availableBoxes: number;
+    /** Bugün onaylanan görevlerden gelen puan. */
+    today: number;
+    /** Büyük Hediye Kutusu ilerlemesi (aynı toplam puan üzerinden). */
+    big: { inCycle: number; threshold: number; availableBoxes: number };
   };
-  hasRewards: boolean;
   tasks: TaskView[];
 }
 
 export interface OpenBoxResponse {
-  reward: { title: string };
+  reward: { title: string; kind: RewardKind };
   state: DashboardState;
 }

@@ -1,8 +1,8 @@
 import { config } from '../config.js';
-import type { Child, DailyLog, Family, LogStatus, Reward, Task } from '../types.js';
+import type { Child, DailyLog, Family, LogStatus, Reward, RewardKind, Task } from '../types.js';
 import { addDays, isSchoolDay } from '../utils/date.js';
 import { db } from './index.js';
-import { CHILD_AVATARS, DEFAULT_REWARDS, MAX_CHILDREN } from './schema.js';
+import { CHILD_AVATARS, DEFAULT_BIG_REWARDS, DEFAULT_REWARDS, MAX_CHILDREN } from './schema.js';
 
 // =====================================================================
 //  Aileler (ebeveyn = Telegram kullanıcısı)
@@ -26,8 +26,9 @@ export const getOrCreateFamily = db.transaction((telegramId: number, parentName?
     .run(telegramId, parentName ?? null);
   const familyId = Number(lastInsertRowid);
 
-  const insertReward = db.prepare('INSERT INTO rewards (family_id, title) VALUES (?, ?)');
-  for (const title of DEFAULT_REWARDS) insertReward.run(familyId, title);
+  const insertReward = db.prepare('INSERT INTO rewards (family_id, title, kind) VALUES (?, ?, ?)');
+  for (const title of DEFAULT_REWARDS) insertReward.run(familyId, title, 'small');
+  for (const title of DEFAULT_BIG_REWARDS) insertReward.run(familyId, title, 'big');
 
   return getFamilyById(familyId)!;
 });
@@ -174,7 +175,15 @@ export function setApprovalMessageId(logId: number, messageId: number): void {
 }
 
 export type DecisionResult =
-  | { ok: true; approved: boolean; log: DailyLog; task: Task; child: Child; boxUnlocked: boolean }
+  | {
+      ok: true;
+      approved: boolean;
+      log: DailyLog;
+      task: Task;
+      child: Child;
+      boxUnlocked: boolean;
+      bigBoxUnlocked: boolean;
+    }
   | { ok: false; reason: 'NOT_FOUND' | 'ALREADY_DECIDED'; log?: DailyLog };
 
 /**
@@ -199,10 +208,18 @@ export const decideLog = db.transaction((logId: number, approve: boolean): Decis
   }
 
   const child = getChild(log.child_id)!;
-  const t = config.boxThreshold;
-  const boxUnlocked = Math.floor(child.total_points / t) > Math.floor(before.total_points / t);
+  const crossed = (threshold: number) =>
+    Math.floor(child.total_points / threshold) > Math.floor(before.total_points / threshold);
 
-  return { ok: true, approved: approve, log: getLog(logId)!, task, child, boxUnlocked };
+  return {
+    ok: true,
+    approved: approve,
+    log: getLog(logId)!,
+    task,
+    child,
+    boxUnlocked: crossed(config.boxThreshold),
+    bigBoxUnlocked: crossed(config.bigBoxThreshold),
+  };
 });
 
 /**
@@ -229,32 +246,49 @@ export function getStreak(childId: number, today: string): number {
 }
 
 // =====================================================================
-//  Ödüller (aile geneli) ve Sürpriz Kutu (çocuk bazında)
+//  Ödüller (aile geneli) ve kutular (çocuk bazında)
 // =====================================================================
 
-export function listActiveRewards(familyId: number): Reward[] {
+export function listActiveRewards(familyId: number, kind: RewardKind = 'small'): Reward[] {
   return db
-    .prepare('SELECT * FROM rewards WHERE family_id = ? AND is_active = 1 ORDER BY id')
-    .all(familyId) as Reward[];
+    .prepare('SELECT * FROM rewards WHERE family_id = ? AND kind = ? AND is_active = 1 ORDER BY id')
+    .all(familyId, kind) as Reward[];
 }
 
-export function addReward(familyId: number, title: string): void {
-  db.prepare('INSERT INTO rewards (family_id, title) VALUES (?, ?)').run(familyId, title);
+export function addReward(familyId: number, title: string, kind: RewardKind = 'small'): void {
+  db.prepare('INSERT INTO rewards (family_id, title, kind) VALUES (?, ?, ?)').run(familyId, title, kind);
 }
 
 export function deactivateReward(familyId: number, rewardId: number): boolean {
   return db.prepare('UPDATE rewards SET is_active = 0 WHERE id = ? AND family_id = ?').run(rewardId, familyId).changes > 0;
 }
 
-/** Puan durumunu hesaplar: kaç kutu kazanıldı, kaç tanesi açılmayı bekliyor, sonraki kutuya ne kadar kaldı. */
+/** Bugün onaylanan görevlerden gelen toplam puan. */
+export function getPointsForDate(childId: number, date: string): number {
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(points_awarded), 0) AS total FROM daily_logs
+        WHERE child_id = ? AND log_date = ? AND status = 'approved'`,
+    )
+    .get(childId, date) as { total: number };
+  return row.total;
+}
+
+/** Bir eşik için ilerleme: döngüdeki puan ve açılmayı bekleyen kutu sayısı. */
+function cycle(total: number, threshold: number, opened: number) {
+  const earned = Math.floor(total / threshold);
+  return { inCycle: total - earned * threshold, threshold, availableBoxes: Math.max(0, earned - opened) };
+}
+
+/**
+ * Puan durumu. Her iki kutu da aynı toplam puandan beslenir:
+ * her BOX_THRESHOLD puanda bir Sürpriz Kutu, her BIG_BOX_THRESHOLD puanda bir Büyük Hediye.
+ */
 export function getPointsSummary(child: Child) {
-  const threshold = config.boxThreshold;
-  const earned = Math.floor(child.total_points / threshold);
   return {
     total: child.total_points,
-    inCycle: child.total_points - earned * threshold,
-    threshold,
-    availableBoxes: Math.max(0, earned - child.boxes_opened),
+    ...cycle(child.total_points, config.boxThreshold, child.boxes_opened),
+    big: cycle(child.total_points, config.bigBoxThreshold, child.big_boxes_opened),
   };
 }
 
@@ -262,21 +296,21 @@ export type OpenBoxResult =
   | { ok: true; reward: Reward; child: Child }
   | { ok: false; reason: 'NO_BOX' | 'NO_REWARDS' };
 
-/** Çocuğun bir Sürpriz Kutusunu açar: ailenin aktif ödüllerinden rastgele birini seçer ve kaydeder. */
-export const openSurpriseBox = db.transaction((childId: number): OpenBoxResult => {
+/** Çocuğun bir kutusunu açar: ailenin o türdeki aktif ödüllerinden rastgele birini seçer ve kaydeder. */
+export const openSurpriseBox = db.transaction((childId: number, kind: RewardKind): OpenBoxResult => {
   const child = getChild(childId)!;
-  if (getPointsSummary(child).availableBoxes <= 0) return { ok: false, reason: 'NO_BOX' };
+  const summary = getPointsSummary(child);
+  const available = kind === 'big' ? summary.big.availableBoxes : summary.availableBoxes;
+  if (available <= 0) return { ok: false, reason: 'NO_BOX' };
 
-  const rewards = listActiveRewards(child.family_id);
+  const rewards = listActiveRewards(child.family_id, kind);
   if (rewards.length === 0) return { ok: false, reason: 'NO_REWARDS' };
 
   const reward = rewards[Math.floor(Math.random() * rewards.length)];
-  db.prepare('UPDATE children SET boxes_opened = boxes_opened + 1 WHERE id = ?').run(childId);
-  db.prepare('INSERT INTO reward_claims (family_id, child_id, reward_id, reward_title) VALUES (?, ?, ?, ?)').run(
-    child.family_id,
-    childId,
-    reward.id,
-    reward.title,
-  );
+  const counter = kind === 'big' ? 'big_boxes_opened' : 'boxes_opened';
+  db.prepare(`UPDATE children SET ${counter} = ${counter} + 1 WHERE id = ?`).run(childId);
+  db.prepare(
+    'INSERT INTO reward_claims (family_id, child_id, reward_id, reward_title, kind) VALUES (?, ?, ?, ?, ?)',
+  ).run(child.family_id, childId, reward.id, reward.title, kind);
   return { ok: true, reward, child: getChild(childId)! };
 });

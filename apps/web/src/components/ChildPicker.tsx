@@ -100,10 +100,17 @@ export function ChildPicker({ onPick }: Props) {
                   <span className="block truncate text-3xl leading-tight font-extrabold text-slate-800">
                     {child.name}
                   </span>
-                  <span className="block text-lg font-bold text-amber-500">⭐ {child.totalPoints} puan</span>
+                  <span className="block text-lg font-bold text-amber-500">
+                    ⭐ {child.totalPoints} puan
+                    {child.todayPoints > 0 && <span className="text-lime-600"> · bugün +{child.todayPoints}</span>}
+                  </span>
                   <span className="block text-base font-bold text-slate-400">
                     Bugün {child.doneToday}/{child.totalToday} görev
-                    {child.availableBoxes > 0 && <span className="text-pink-500"> · 🎁 kutu var!</span>}
+                    {child.availableBigBoxes > 0 ? (
+                      <span className="text-amber-600"> · 👑 büyük hediye!</span>
+                    ) : (
+                      child.availableBoxes > 0 && <span className="text-pink-500"> · 🎁 kutu var!</span>
+                    )}
                   </span>
                 </span>
                 <span className="text-3xl text-slate-300">➜</span>

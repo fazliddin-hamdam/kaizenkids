@@ -1,7 +1,7 @@
 # 🌱 KaizenKids — MVP
 
 Atomik Alışkanlıklar felsefesiyle 7-9 yaş çocuklar için Telegram Mini App.
-Çocuk görevini yapınca **"Yaptım!"** der → ebeveyne Telegram'dan onay mesajı gider → ebeveyn **✅ Onayla** derse puan eklenir, çocuğun ekranında kutlama oynar → her 100 puanda bir **🎁 Sürpriz Kutu** açılır.
+Çocuk görevini yapınca **"Yaptım!"** der → ebeveyne Telegram'dan onay mesajı gider → ebeveyn **✅ Onayla** derse puan eklenir, çocuğun ekranında kutlama oynar → her 100 puanda bir **🎁 Sürpriz Kutu**, her 1000 puanda bir **👑 Büyük Hediye Kutusu** açılır.
 
 ## Klasör Yapısı
 
@@ -46,7 +46,7 @@ AtomBot/
 | `children` | Ailenin çocukları; ad, avatar, toplam puan, açılan kutu sayısı |
 | `tasks` | 13 sabit görev (sabah / okulda / okul sonrası / akşam); tam okul günü = 100 puan, hafta sonu okul görevleri gizlenir |
 | `daily_logs` | aile + görev + gün başına tek kayıt: `pending` / `approved` / `rejected` |
-| `rewards` | Ebeveynin ödülleri (Sürpriz Kutu içeriği) |
+| `rewards` | Ebeveynin ödülleri; `kind`: `small` (Sürpriz Kutu) veya `big` (Büyük Hediye) |
 | `reward_claims` | Açılan kutuların geçmişi |
 
 Puanlar yalnızca ebeveyn onayında, tek bir transaction içinde eklenir; aynı butona iki kez basmak çift puan vermez.
@@ -113,3 +113,6 @@ Express, derlenmiş Mini App'i (`apps/web/dist`) aynı porttan sunar; `WEBAPP_UR
 | `/oduller` | Sürpriz Kutu ödüllerini listeler |
 | `/odulekle Sinema gecesi` | Ödül ekler |
 | `/odulsil 2` | Listedeki 2. ödülü siler |
+| `/buyukoduller` | 👑 Büyük Hediye ödüllerini listeler (her 1000 puanda bir kutu) |
+| `/buyukodulekle Lunaparka gitmek` | Büyük ödül ekler |
+| `/buyukodulsil 2` | Listedeki 2. büyük ödülü siler |

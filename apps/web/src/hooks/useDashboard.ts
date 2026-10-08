@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../lib/api';
-import type { DashboardState, TaskStatus, TaskView } from '../types';
+import type { DashboardState, RewardKind, TaskStatus, TaskView } from '../types';
 
 /** Bekleyen görev varken ebeveyn kararını hızlı yakalamak için sık, yoksa seyrek yokla. */
 const FAST_POLL_MS = 3000;
@@ -75,11 +75,14 @@ export function useDashboard(childId: number, onTransitions: (t: Transitions) =>
     [apply, childId],
   );
 
-  const openBox = useCallback(async () => {
-    const { reward, state: next } = await api.openBox(childId);
-    apply(next);
-    return reward;
-  }, [apply, childId]);
+  const openBox = useCallback(
+    async (kind: RewardKind) => {
+      const { reward, state: next } = await api.openBox(childId, kind);
+      apply(next);
+      return reward;
+    },
+    [apply, childId],
+  );
 
   return { state, loadError, busyTaskId, refresh, markDone, openBox };
 }

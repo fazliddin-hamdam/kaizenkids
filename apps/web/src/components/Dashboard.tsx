@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useDashboard, type Transitions } from '../hooks/useDashboard';
 import { burst } from '../lib/confetti';
 import { haptic } from '../lib/telegram';
-import type { Period, TaskView } from '../types';
+import type { Period, RewardKind, TaskView } from '../types';
 import { Celebration } from './Celebration';
 import { PeriodTabs } from './PeriodTabs';
 import { periodMeta } from './periods';
@@ -29,7 +29,7 @@ interface Props {
 export function Dashboard({ childId, onSwitchChild }: Props) {
   const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null);
   const [celebration, setCelebration] = useState<{ title: string; points: number } | null>(null);
-  const [boxModalOpen, setBoxModalOpen] = useState(false);
+  const [openingBox, setOpeningBox] = useState<RewardKind | null>(null);
   const [toast, setToast] = useState<ToastMessage | null>(null);
 
   const showToast = useCallback((text: string, tone: ToastMessage['tone']) => {
@@ -105,7 +105,7 @@ export function Dashboard({ childId, onSwitchChild }: Props) {
         </div>
       </header>
 
-      <ProgressCard points={state.points} onOpenBox={() => setBoxModalOpen(true)} />
+      <ProgressCard points={state.points} onOpenBox={setOpeningBox} />
 
       <PeriodTabs
         active={activePeriod}
@@ -135,7 +135,9 @@ export function Dashboard({ childId, onSwitchChild }: Props) {
       {celebration && (
         <Celebration title={celebration.title} points={celebration.points} onClose={() => setCelebration(null)} />
       )}
-      {boxModalOpen && <SurpriseBoxModal onOpen={openBox} onClose={() => setBoxModalOpen(false)} />}
+      {openingBox && (
+        <SurpriseBoxModal kind={openingBox} onOpen={() => openBox(openingBox)} onClose={() => setOpeningBox(null)} />
+      )}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
     </main>
   );

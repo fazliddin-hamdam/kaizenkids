@@ -1,16 +1,37 @@
 import { useState } from 'react';
 import { fireworks } from '../lib/confetti';
 import { haptic } from '../lib/telegram';
+import type { RewardKind } from '../types';
 
 interface Props {
+  kind: RewardKind;
   onOpen: () => Promise<{ title: string }>;
   onClose: () => void;
 }
 
+/** Sürpriz Kutu (pembe) ve Büyük Hediye (altın) görünümleri. */
+const LOOK: Record<RewardKind, { backdrop: string; card: string; title: string; emoji: string; prize: string }> = {
+  small: {
+    backdrop: 'bg-fuchsia-900/50',
+    card: 'bg-white',
+    title: 'Sürpriz Kutu!',
+    emoji: '🎁',
+    prize: 'Kutudan çıkan ödül:',
+  },
+  big: {
+    backdrop: 'bg-amber-900/60',
+    card: 'bg-linear-to-b from-yellow-50 to-amber-100 ring-4 ring-amber-300',
+    title: '👑 Büyük Hediye Kutusu!',
+    emoji: '🎁',
+    prize: 'BÜYÜK ödülün:',
+  },
+};
+
 type Phase = 'closed' | 'opening' | 'revealed' | 'error';
 
 /** Kutu sallanır → çocuk dokunur → ödül konfetiyle ortaya çıkar. */
-export function SurpriseBoxModal({ onOpen, onClose }: Props) {
+export function SurpriseBoxModal({ kind, onOpen, onClose }: Props) {
+  const look = LOOK[kind];
   const [phase, setPhase] = useState<Phase>('closed');
   const [text, setText] = useState('');
 
@@ -25,6 +46,7 @@ export function SurpriseBoxModal({ onOpen, onClose }: Props) {
       setPhase('revealed');
       haptic.success();
       fireworks();
+      if (kind === 'big') setTimeout(fireworks, 900); // büyük hediye: ikinci dalga
     } catch (error) {
       setText((error as Error).message);
       setPhase('error');
@@ -33,12 +55,12 @@ export function SurpriseBoxModal({ onOpen, onClose }: Props) {
   };
 
   return (
-    <div className="animate-fade-in fixed inset-0 z-40 grid place-items-center bg-fuchsia-900/50 p-6 backdrop-blur-sm">
-      <div className="animate-pop w-full max-w-sm rounded-[2rem] bg-white p-8 text-center shadow-2xl">
+    <div className={`animate-fade-in fixed inset-0 z-40 grid place-items-center p-6 backdrop-blur-sm ${look.backdrop}`}>
+      <div className={`animate-pop w-full max-w-sm rounded-[2rem] p-8 text-center shadow-2xl ${look.card}`}>
         {phase === 'revealed' ? (
           <>
-            <div className="animate-float text-8xl">🏆</div>
-            <p className="mt-2 text-2xl font-extrabold text-fuchsia-500">Kutudan çıkan ödül:</p>
+            <div className="animate-float text-8xl">{kind === 'big' ? '👑' : '🏆'}</div>
+            <p className="mt-2 text-2xl font-extrabold text-fuchsia-500">{look.prize}</p>
             <p className="mt-3 rounded-2xl bg-amber-100 px-4 py-4 text-3xl leading-tight font-extrabold text-amber-600">
               {text}
             </p>
@@ -65,14 +87,18 @@ export function SurpriseBoxModal({ onOpen, onClose }: Props) {
           </>
         ) : (
           <>
-            <p className="text-3xl font-extrabold text-fuchsia-500">Sürpriz Kutu!</p>
+            <p className={`text-3xl font-extrabold ${kind === 'big' ? 'text-amber-600' : 'text-fuchsia-500'}`}>
+              {look.title}
+            </p>
             <button
               type="button"
               onClick={open}
               aria-label="Kutuyu aç"
-              className={`my-4 text-[9rem] leading-none ${phase === 'opening' ? 'animate-shake' : 'animate-wiggle'}`}
+              className={`my-4 leading-none ${kind === 'big' ? 'text-[11rem]' : 'text-[9rem]'} ${
+                phase === 'opening' ? 'animate-shake' : 'animate-wiggle'
+              }`}
             >
-              🎁
+              {look.emoji}
             </button>
             <p className="text-xl font-bold text-slate-500">
               {phase === 'opening' ? 'Açılıyor...' : 'Açmak için kutuya dokun!'}

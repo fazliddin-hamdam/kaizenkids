@@ -2,6 +2,7 @@
 
 export type Period = 'morning' | 'school' | 'afternoon' | 'evening';
 export type TaskStatus = 'todo' | 'pending' | 'approved' | 'rejected';
+export type RewardKind = 'small' | 'big';
 
 export interface TaskView {
   id: number;
@@ -17,7 +18,9 @@ export interface ChildSummary {
   name: string;
   avatar: string;
   totalPoints: number;
+  todayPoints: number;
   availableBoxes: number;
+  availableBigBoxes: number;
   doneToday: number;
   totalToday: number;
 }
@@ -39,12 +42,13 @@ export interface DashboardState {
     inCycle: number;
     threshold: number;
     availableBoxes: number;
+    today: number;
+    big: { inCycle: number; threshold: number; availableBoxes: number };
   };
-  hasRewards: boolean;
   tasks: TaskView[];
 }
 
 export interface OpenBoxResponse {
-  reward: { title: string };
+  reward: { title: string; kind: RewardKind };
   state: DashboardState;
 }

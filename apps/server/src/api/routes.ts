@@ -1,7 +1,15 @@
 import { Router, type Request, type Response } from 'express';
 import * as repo from '../db/repo.js';
 import { AppError, handleChildDone, notifyBoxOpened } from '../services/approval.js';
-import type { Child, ChildrenResponse, ChildSummary, DashboardState, Family, OpenBoxResponse } from '../types.js';
+import type {
+  Child,
+  ChildrenResponse,
+  ChildSummary,
+  DashboardState,
+  Family,
+  OpenBoxResponse,
+  RewardKind,
+} from '../types.js';
 import { currentPeriod, isSchoolDay, todayKey } from '../utils/date.js';
 import { telegramAuth, type AuthedLocals } from './auth.js';
 
@@ -16,12 +24,15 @@ function buildChildSummary(child: Child, today: string): ChildSummary {
       .filter((l) => l.status === 'approved')
       .map((l) => l.task_id),
   );
+  const points = repo.getPointsSummary(child);
   return {
     id: child.id,
     name: child.name,
     avatar: child.avatar,
     totalPoints: child.total_points,
-    availableBoxes: repo.getPointsSummary(child).availableBoxes,
+    todayPoints: repo.getPointsForDate(child.id, today),
+    availableBoxes: points.availableBoxes,
+    availableBigBoxes: points.big.availableBoxes,
     doneToday: tasks.filter((t) => approved.has(t.id)).length,
     totalToday: tasks.length,
   };
@@ -41,8 +52,7 @@ function buildDashboardState(childId: number): DashboardState {
     isSchoolDay: isSchoolDay(today),
     currentPeriod: currentPeriod(),
     streak: repo.getStreak(child.id, today),
-    points: repo.getPointsSummary(child),
-    hasRewards: repo.listActiveRewards(child.family_id).length > 0,
+    points: { ...repo.getPointsSummary(child), today: repo.getPointsForDate(child.id, today) },
     tasks: repo.listTasksForDate(today).map((t) => ({
       id: t.id,
       title: t.title,
@@ -86,18 +96,24 @@ apiRouter.post('/children/:childId/tasks/:taskId/done', async (req, res: AuthedR
   res.json(buildDashboardState(child.id));
 });
 
-/** Sürpriz Kutuyu aç → rastgele ödül + ebeveyne bildirim. */
+/** Kutuyu aç → rastgele ödül + ebeveyne bildirim. Gövde: { kind: 'small' | 'big' } (varsayılan small). */
 apiRouter.post('/children/:childId/box/open', async (req, res: AuthedResponse<OpenBoxResponse>) => {
-  const result = repo.openSurpriseBox(childFromRequest(req, res.locals.family).id);
+  const child = childFromRequest(req, res.locals.family);
+  const kind: RewardKind = req.body?.kind === 'big' ? 'big' : 'small';
+
+  const result = repo.openSurpriseBox(child.id, kind);
   if (!result.ok) {
+    if (result.reason === 'NO_BOX') {
+      throw new AppError(409, 'Henüz açılacak kutu yok. Görevlerini yapmaya devam et! 💪');
+    }
     throw new AppError(
       409,
-      result.reason === 'NO_BOX'
-        ? 'Henüz açılacak kutu yok. Görevlerini yapmaya devam et! 💪'
-        : 'Kutunun içi boş! Annenden/babandan bota ödül eklemesini iste. 🎁',
+      kind === 'big'
+        ? 'Büyük kutunun içi boş! Annenden/babandan bota /buyukodulekle ile büyük ödül eklemesini iste. 👑'
+        : 'Kutunun içi boş! Annenden/babandan bota /odulekle ile ödül eklemesini iste. 🎁',
     );
   }
 
-  await notifyBoxOpened(res.locals.family, result.child, result.reward.title);
-  res.json({ reward: { title: result.reward.title }, state: buildDashboardState(result.child.id) });
+  await notifyBoxOpened(res.locals.family, result.child, result.reward.title, kind);
+  res.json({ reward: { title: result.reward.title, kind }, state: buildDashboardState(result.child.id) });
 });

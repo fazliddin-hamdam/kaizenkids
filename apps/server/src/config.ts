@@ -23,6 +23,7 @@ export const config = {
   dbPath: path.resolve(ROOT_DIR, process.env.DB_PATH ?? 'data/kaizenkids.db'),
   timezone: process.env.APP_TIMEZONE ?? 'Europe/Istanbul',
   boxThreshold: Math.max(1, Number(process.env.BOX_THRESHOLD ?? 100)),
+  bigBoxThreshold: Math.max(1, Number(process.env.BIG_BOX_THRESHOLD ?? 1000)),
   isProduction: process.env.NODE_ENV === 'production',
   devAuthBypass: process.env.DEV_AUTH_BYPASS === 'true',
   devUserId: Number(process.env.DEV_USER_ID ?? 0),

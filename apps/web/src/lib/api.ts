@@ -1,4 +1,4 @@
-import type { ChildrenResponse, DashboardState, OpenBoxResponse } from '../types';
+import type { ChildrenResponse, DashboardState, OpenBoxResponse, RewardKind } from '../types';
 import { getInitData, getLaunchInfo } from './telegram';
 
 export class ApiError extends Error {
@@ -38,5 +38,6 @@ export const api = {
   getState: (childId: number) => request<DashboardState>(`/children/${childId}/state`),
   markDone: (childId: number, taskId: number) =>
     request<DashboardState>(`/children/${childId}/tasks/${taskId}/done`, { method: 'POST' }),
-  openBox: (childId: number) => request<OpenBoxResponse>(`/children/${childId}/box/open`, { method: 'POST' }),
+  openBox: (childId: number, kind: RewardKind) =>
+    request<OpenBoxResponse>(`/children/${childId}/box/open`, { method: 'POST', body: JSON.stringify({ kind }) }),
 };

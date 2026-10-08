@@ -2,14 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from '../config.js';
-import {
-  CHILD_AVATARS,
-  SCHEMA_SQL,
-  SEED_TASKS,
-  childrenTableSql,
-  dailyLogsTableSql,
-  tasksTableSql,
-} from './schema.js';
+import { CHILD_AVATARS, DEFAULT_BIG_REWARDS, SCHEMA_SQL, SEED_TASKS, dailyLogsTableSql, tasksTableSql } from './schema.js';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 
@@ -37,7 +30,19 @@ const MIGRATIONS: Array<() => void> = [
   // 2) Çoklu çocuk: aile üzerindeki çocuk verisi children tablosuna taşınır, kayıtlar çocuğa bağlanır.
   //    Taşınan çocuğun id'si aile id'siyle aynı verilir; böylece eski kayıtlar doğrudan eşlenir.
   () => {
-    db.exec(childrenTableSql('children'));
+    // Not: tablo tanımı bu adımın anındaki haliyle sabittir; sonraki sütunlar ayrı migration'larla eklenir.
+    db.exec(`
+      CREATE TABLE children (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        family_id     INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+        name          TEXT NOT NULL,
+        avatar        TEXT NOT NULL,
+        total_points  INTEGER NOT NULL DEFAULT 0,
+        boxes_opened  INTEGER NOT NULL DEFAULT 0,
+        is_active     INTEGER NOT NULL DEFAULT 1,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+      );
+    `);
     db.exec(`
       INSERT INTO children (id, family_id, name, avatar, total_points, boxes_opened, created_at)
         SELECT f.id, f.id, COALESCE(f.child_name, 'Çocuğum'), '${CHILD_AVATARS[0]}',
@@ -62,6 +67,20 @@ const MIGRATIONS: Array<() => void> = [
       ALTER TABLE families DROP COLUMN total_points;
       ALTER TABLE families DROP COLUMN boxes_opened;
     `);
+  },
+
+  // 3) Büyük Hediye Kutusu: çocukta açılan büyük kutu sayısı, ödüllerde ve geçmişte tür (small/big).
+  () => {
+    db.exec(`
+      ALTER TABLE children ADD COLUMN big_boxes_opened INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE rewards ADD COLUMN kind TEXT NOT NULL DEFAULT 'small' CHECK (kind IN ('small', 'big'));
+      ALTER TABLE reward_claims ADD COLUMN kind TEXT NOT NULL DEFAULT 'small';
+    `);
+    // Mevcut ailelere örnek büyük ödülleri ekle (ebeveyn /buyukoduller ile değiştirebilir).
+    const insert = db.prepare(`INSERT INTO rewards (family_id, title, kind) VALUES (?, ?, 'big')`);
+    for (const { id } of db.prepare('SELECT id FROM families').all() as { id: number }[]) {
+      for (const title of DEFAULT_BIG_REWARDS) insert.run(id, title);
+    }
   },
 ];
 

@@ -36,7 +36,8 @@ CREATE TABLE IF NOT EXISTS ${name} (
   total_points  INTEGER NOT NULL DEFAULT 0,
   boxes_opened  INTEGER NOT NULL DEFAULT 0,
   is_active     INTEGER NOT NULL DEFAULT 1,      -- 0: /cocuksil ile kaldırıldı (veriler saklanır)
-  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+  big_boxes_opened  INTEGER NOT NULL DEFAULT 0   -- açılan Büyük Hediye Kutusu sayısı
 );`;
 }
 
@@ -77,7 +78,8 @@ CREATE TABLE IF NOT EXISTS rewards (
   family_id   INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
   title       TEXT NOT NULL,
   is_active   INTEGER NOT NULL DEFAULT 1,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  kind        TEXT NOT NULL DEFAULT 'small' CHECK (kind IN ('small', 'big'))  -- Sürpriz Kutu / Büyük Hediye
 );
 CREATE INDEX IF NOT EXISTS idx_rewards_family ON rewards (family_id);
 
@@ -87,7 +89,8 @@ CREATE TABLE IF NOT EXISTS reward_claims (
   child_id      INTEGER REFERENCES children(id) ON DELETE SET NULL,
   reward_id     INTEGER REFERENCES rewards(id) ON DELETE SET NULL,
   reward_title  TEXT NOT NULL,
-  opened_at     TEXT NOT NULL DEFAULT (datetime('now'))
+  opened_at     TEXT NOT NULL DEFAULT (datetime('now')),
+  kind          TEXT NOT NULL DEFAULT 'small'
 );
 `;
 
@@ -131,3 +134,6 @@ export const DEFAULT_REWARDS = [
   'En sevdiğin tatlı',
   'Yatmadan önce ekstra bir masal',
 ];
+
+/** Büyük Hediye Kutusu için örnek ödüller (her BIG_BOX_THRESHOLD puanda bir açılır). */
+export const DEFAULT_BIG_REWARDS = ['Lunaparka gitmek', 'İstediği bir oyuncak', 'Hayvanat bahçesi gezisi'];
