@@ -56,6 +56,16 @@ export function validateInitData(initData: string, botToken: string, maxAgeSec: 
 export type AuthedLocals = { family: Family };
 
 /**
+ * İstek bu bilgisayardan mı geliyor? Tünel (cloudflared) üzerinden gelen istekler Host başlığında
+ * tünel adresini ve yönlendirme başlıklarını taşır; bunlar geliştirici kestirmesinden yararlanamaz.
+ */
+function isLocalRequest(req: Request): boolean {
+  const host = (req.header('host') ?? '').replace(/:\d+$/, '');
+  const forwarded = req.header('x-forwarded-for') || req.header('cf-connecting-ip');
+  return !forwarded && ['localhost', '127.0.0.1', '[::1]'].includes(host);
+}
+
+/**
  * İstek başlığı: `Authorization: tma <initData>`
  * Doğrulanan Telegram kullanıcısı = ebeveyn → aile kaydı bulunur/oluşturulur.
  * Geliştirmede DEV_AUTH_BYPASS=true ise Telegram dışından DEV_USER_ID ile girilebilir.
@@ -70,7 +80,8 @@ export function telegramAuth(req: Request, res: Response<unknown, AuthedLocals>,
     if (result.ok) user = result.user;
     else reason = result.reason;
   } else if (config.devAuthBypass && !config.isProduction && config.devUserId) {
-    user = { id: config.devUserId, first_name: 'Geliştirici' };
+    if (isLocalRequest(req)) user = { id: config.devUserId, first_name: 'Geliştirici' };
+    else reason = 'DEV_AUTH_BYPASS yalnızca bu bilgisayardan (localhost) gelen isteklerde geçerlidir';
   }
 
   if (!user) {
