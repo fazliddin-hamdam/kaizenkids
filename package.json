@@ -1,0 +1,21 @@
+{
+  "name": "kaizenkids",
+  "version": "0.1.0",
+  "private": true,
+  "description": "KaizenKids — Atomik Alışkanlıklar felsefesiyle çocuklar için Telegram Mini App (MVP)",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm run dev -w @kaizenkids/server\" \"npm run dev -w @kaizenkids/web\"",
+    "build": "npm run build -w @kaizenkids/web && npm run build -w @kaizenkids/server",
+    "start": "npm run start -w @kaizenkids/server",
+    "typecheck": "npm run typecheck -w @kaizenkids/server && npm run typecheck -w @kaizenkids/web"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.6"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
