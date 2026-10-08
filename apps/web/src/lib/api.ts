@@ -1,4 +1,4 @@
-import type { DashboardState, OpenBoxResponse } from '../types';
+import type { ChildrenResponse, DashboardState, OpenBoxResponse } from '../types';
 import { getInitData, getLaunchInfo } from './telegram';
 
 export class ApiError extends Error {
@@ -34,7 +34,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
-  getState: () => request<DashboardState>('/state'),
-  markDone: (taskId: number) => request<DashboardState>(`/tasks/${taskId}/done`, { method: 'POST' }),
-  openBox: () => request<OpenBoxResponse>('/box/open', { method: 'POST' }),
+  getChildren: () => request<ChildrenResponse>('/children'),
+  getState: (childId: number) => request<DashboardState>(`/children/${childId}/state`),
+  markDone: (childId: number, taskId: number) =>
+    request<DashboardState>(`/children/${childId}/tasks/${taskId}/done`, { method: 'POST' }),
+  openBox: (childId: number) => request<OpenBoxResponse>(`/children/${childId}/box/open`, { method: 'POST' }),
 };

@@ -2,7 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from '../config.js';
-import { SCHEMA_SQL, SEED_TASKS, tasksTableSql } from './schema.js';
+import {
+  CHILD_AVATARS,
+  SCHEMA_SQL,
+  SEED_TASKS,
+  childrenTableSql,
+  dailyLogsTableSql,
+  tasksTableSql,
+} from './schema.js';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 
@@ -24,6 +31,36 @@ const MIGRATIONS: Array<() => void> = [
         SELECT id, code, title, emoji, period, points, sort_order FROM tasks;
       DROP TABLE tasks;
       ALTER TABLE tasks_new RENAME TO tasks;
+    `);
+  },
+
+  // 2) Çoklu çocuk: aile üzerindeki çocuk verisi children tablosuna taşınır, kayıtlar çocuğa bağlanır.
+  //    Taşınan çocuğun id'si aile id'siyle aynı verilir; böylece eski kayıtlar doğrudan eşlenir.
+  () => {
+    db.exec(childrenTableSql('children'));
+    db.exec(`
+      INSERT INTO children (id, family_id, name, avatar, total_points, boxes_opened, created_at)
+        SELECT f.id, f.id, COALESCE(f.child_name, 'Çocuğum'), '${CHILD_AVATARS[0]}',
+               f.total_points, f.boxes_opened, f.created_at
+          FROM families f
+         WHERE f.child_name IS NOT NULL OR f.total_points > 0 OR f.boxes_opened > 0
+            OR EXISTS (SELECT 1 FROM daily_logs l WHERE l.family_id = f.id);
+    `);
+    db.exec(dailyLogsTableSql('daily_logs_new'));
+    db.exec(`
+      INSERT INTO daily_logs_new (id, child_id, task_id, log_date, status, points_awarded,
+                                  approval_message_id, requested_at, decided_at)
+        SELECT id, family_id, task_id, log_date, status, points_awarded,
+               approval_message_id, requested_at, decided_at FROM daily_logs;
+      DROP TABLE daily_logs;
+      ALTER TABLE daily_logs_new RENAME TO daily_logs;
+
+      ALTER TABLE reward_claims ADD COLUMN child_id INTEGER REFERENCES children(id) ON DELETE SET NULL;
+      UPDATE reward_claims SET child_id = family_id WHERE family_id IN (SELECT id FROM children);
+
+      ALTER TABLE families DROP COLUMN child_name;
+      ALTER TABLE families DROP COLUMN total_points;
+      ALTER TABLE families DROP COLUMN boxes_opened;
     `);
   },
 ];

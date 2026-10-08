@@ -1,10 +1,12 @@
 /**
  * SQLite şeması. Tablolar "IF NOT EXISTS" ile oluşturulur; uygulama her açılışta güvenle çalıştırır.
+ * Yeni veritabanı bu şemayla kurulur; eskiler db/index.ts'deki migration'larla buraya getirilir.
  *
- *  families       → Bir ebeveyn (Telegram kullanıcısı) = bir aile. Puanlar aile üzerinde tutulur.
- *  tasks          → MVP'de sabit görev listesi (seed ile doldurulur).
- *  daily_logs     → Her aile/görev/gün için tek kayıt: bekliyor / onaylandı / reddedildi.
- *  rewards        → Ebeveynin tanımladığı gerçek dünya ödülleri (Sürpriz Kutu içeriği).
+ *  families       → Bir ebeveyn (Telegram kullanıcısı) = bir aile.
+ *  children       → Ailenin çocukları; puanlar, kutular ve seri her çocukta ayrı tutulur.
+ *  tasks          → Sabit görev listesi (seed ile doldurulur).
+ *  daily_logs     → Her çocuk/görev/gün için tek kayıt: bekliyor / onaylandı / reddedildi.
+ *  rewards        → Ebeveynin tanımladığı gerçek dünya ödülleri (tüm çocuklar için ortak Sürpriz Kutu içeriği).
  *  reward_claims  → Açılan kutuların geçmişi (ödül adı anlık olarak kopyalanır).
  */
 
@@ -24,22 +26,25 @@ CREATE TABLE IF NOT EXISTS ${name} (
 );`;
 }
 
-export const SCHEMA_SQL = /* sql */ `
-CREATE TABLE IF NOT EXISTS families (
+export function childrenTableSql(name: string): string {
+  return /* sql */ `
+CREATE TABLE IF NOT EXISTS ${name} (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
-  telegram_id   INTEGER NOT NULL UNIQUE,          -- ebeveynin Telegram ID'si (= özel sohbet chat_id)
-  parent_name   TEXT,
-  child_name    TEXT,
+  family_id     INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+  name          TEXT NOT NULL,
+  avatar        TEXT NOT NULL,
   total_points  INTEGER NOT NULL DEFAULT 0,
   boxes_opened  INTEGER NOT NULL DEFAULT 0,
+  is_active     INTEGER NOT NULL DEFAULT 1,      -- 0: /cocuksil ile kaldırıldı (veriler saklanır)
   created_at    TEXT NOT NULL DEFAULT (datetime('now'))
-);
+);`;
+}
 
-${tasksTableSql('tasks')}
-
-CREATE TABLE IF NOT EXISTS daily_logs (
+export function dailyLogsTableSql(name: string): string {
+  return /* sql */ `
+CREATE TABLE IF NOT EXISTS ${name} (
   id                   INTEGER PRIMARY KEY AUTOINCREMENT,
-  family_id            INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+  child_id             INTEGER NOT NULL REFERENCES children(id) ON DELETE CASCADE,
   task_id              INTEGER NOT NULL REFERENCES tasks(id),
   log_date             TEXT NOT NULL,             -- YYYY-MM-DD (APP_TIMEZONE'a göre)
   status               TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
@@ -47,9 +52,25 @@ CREATE TABLE IF NOT EXISTS daily_logs (
   approval_message_id  INTEGER,                   -- ebeveyne giden onay mesajının ID'si
   requested_at         TEXT NOT NULL DEFAULT (datetime('now')),
   decided_at           TEXT,
-  UNIQUE (family_id, task_id, log_date)
+  UNIQUE (child_id, task_id, log_date)
+);`;
+}
+
+export const SCHEMA_SQL = /* sql */ `
+CREATE TABLE IF NOT EXISTS families (
+  id            INTEGER PRIMARY KEY AUTOINCREMENT,
+  telegram_id   INTEGER NOT NULL UNIQUE,          -- ebeveynin Telegram ID'si (= özel sohbet chat_id)
+  parent_name   TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_daily_logs_family_date ON daily_logs (family_id, log_date);
+
+${childrenTableSql('children')}
+CREATE INDEX IF NOT EXISTS idx_children_family ON children (family_id);
+
+${tasksTableSql('tasks')}
+
+${dailyLogsTableSql('daily_logs')}
+CREATE INDEX IF NOT EXISTS idx_daily_logs_child_date ON daily_logs (child_id, log_date);
 
 CREATE TABLE IF NOT EXISTS rewards (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,6 +84,7 @@ CREATE INDEX IF NOT EXISTS idx_rewards_family ON rewards (family_id);
 CREATE TABLE IF NOT EXISTS reward_claims (
   id            INTEGER PRIMARY KEY AUTOINCREMENT,
   family_id     INTEGER NOT NULL REFERENCES families(id) ON DELETE CASCADE,
+  child_id      INTEGER REFERENCES children(id) ON DELETE SET NULL,
   reward_id     INTEGER REFERENCES rewards(id) ON DELETE SET NULL,
   reward_title  TEXT NOT NULL,
   opened_at     TEXT NOT NULL DEFAULT (datetime('now'))
@@ -95,6 +117,12 @@ export const SEED_TASKS = [
   { code: 'tidy_toys', title: 'Oyuncaklarını Topla', emoji: '🧸', period: 'evening', points: 5 },
   { code: 'sleep_early', title: 'Erken Uyu (21:30)', emoji: '😴', period: 'evening', points: 10 },
 ] as const;
+
+/** Çocuklara sırayla verilen avatarlar. */
+export const CHILD_AVATARS = ['🦸', '🧚', '🦖', '🦄', '🐼', '🚀', '🐯', '🐬'];
+
+/** Bir ailede en fazla kaç aktif çocuk olabilir. */
+export const MAX_CHILDREN = 6;
 
 /** Yeni bir aile oluşturulduğunda eklenen örnek ödüller (ebeveyn botla değiştirebilir). */
 export const DEFAULT_REWARDS = [

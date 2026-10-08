@@ -9,9 +9,17 @@ export interface Family {
   id: number;
   telegram_id: number;
   parent_name: string | null;
-  child_name: string | null;
+  created_at: string;
+}
+
+export interface Child {
+  id: number;
+  family_id: number;
+  name: string;
+  avatar: string;
   total_points: number;
   boxes_opened: number;
+  is_active: number;
   created_at: string;
 }
 
@@ -29,7 +37,7 @@ export interface Task {
 
 export interface DailyLog {
   id: number;
-  family_id: number;
+  child_id: number;
   task_id: number;
   log_date: string;
   status: LogStatus;
@@ -58,8 +66,25 @@ export interface TaskView {
   status: TaskStatus;
 }
 
+/** Çocuk seçim ekranındaki kart. */
+export interface ChildSummary {
+  id: number;
+  name: string;
+  avatar: string;
+  totalPoints: number;
+  availableBoxes: number;
+  doneToday: number;
+  totalToday: number;
+}
+
+export interface ChildrenResponse {
+  children: ChildSummary[];
+}
+
 export interface DashboardState {
+  childId: number;
   childName: string;
+  avatar: string;
   today: string;
   /** Hafta içi mi? Hafta sonu okul görevleri gösterilmez. */
   isSchoolDay: boolean;

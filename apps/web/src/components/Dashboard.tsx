@@ -9,6 +9,7 @@ import { periodMeta } from './periods';
 import { ProgressCard } from './ProgressCard';
 import { SurpriseBoxModal } from './SurpriseBoxModal';
 import { TaskCard } from './TaskCard';
+import { SplashScreen } from './SplashScreen';
 import { Toast, type ToastMessage } from './Toast';
 
 const GREETING: Record<Period, string> = {
@@ -18,8 +19,14 @@ const GREETING: Record<Period, string> = {
   evening: 'İyi akşamlar',
 };
 
+interface Props {
+  childId: number;
+  /** Verilirse başlıkta "Değiştir" butonu çıkar (birden fazla çocuk varsa). */
+  onSwitchChild?: () => void;
+}
+
 /** Çocuğun ana ekranı: selamlama + seri, puan/kutu, gün bölümü sekmeleri ve görev kartları. */
-export function Dashboard() {
+export function Dashboard({ childId, onSwitchChild }: Props) {
   const [selectedPeriod, setSelectedPeriod] = useState<Period | null>(null);
   const [celebration, setCelebration] = useState<{ title: string; points: number } | null>(null);
   const [boxModalOpen, setBoxModalOpen] = useState(false);
@@ -48,7 +55,7 @@ export function Dashboard() {
     [showToast],
   );
 
-  const { state, loadError, busyTaskId, refresh, markDone, openBox } = useDashboard(onTransitions);
+  const { state, loadError, busyTaskId, refresh, markDone, openBox } = useDashboard(childId, onTransitions);
 
   const handleDone = async (task: TaskView) => {
     haptic.tap();
@@ -74,11 +81,23 @@ export function Dashboard() {
       {/* Selamlama */}
       <header className="flex items-center gap-4 rounded-3xl bg-white/90 p-4 shadow-lg">
         <div className="animate-float grid size-16 shrink-0 place-items-center rounded-full bg-linear-to-br from-yellow-200 to-pink-300 text-4xl">
-          🦸
+          {state.avatar}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-lg font-bold text-slate-500">{GREETING[state.currentPeriod]},</p>
           <h1 className="truncate text-3xl leading-tight font-extrabold text-fuchsia-600">{state.childName}!</h1>
+          {onSwitchChild && (
+            <button
+              type="button"
+              onClick={() => {
+                haptic.tap();
+                onSwitchChild();
+              }}
+              className="mt-1 rounded-full bg-sky-100 px-3 py-0.5 text-sm font-extrabold text-sky-700 active:translate-y-0.5"
+            >
+              🔄 Değiştir
+            </button>
+          )}
         </div>
         <div className="flex flex-col items-center rounded-2xl bg-orange-100 px-3 py-2" title="Zinciri kırma!">
           <span className="text-3xl leading-none">🔥</span>
@@ -119,26 +138,5 @@ export function Dashboard() {
       {boxModalOpen && <SurpriseBoxModal onOpen={openBox} onClose={() => setBoxModalOpen(false)} />}
       {toast && <Toast message={toast} onClose={() => setToast(null)} />}
     </main>
-  );
-}
-
-/** İlk yükleme ve hata ekranı. */
-function SplashScreen({ error, onRetry }: { error: string | null; onRetry: () => void }) {
-  return (
-    <div className="grid min-h-dvh place-items-center p-8 text-center">
-      <div>
-        <div className={`text-8xl ${error ? '' : 'animate-float'}`}>{error ? '🙈' : '🌱'}</div>
-        <p className="mt-4 text-2xl font-extrabold text-slate-600">{error ?? 'Yükleniyor...'}</p>
-        {error && (
-          <button
-            type="button"
-            onClick={onRetry}
-            className="mt-6 h-14 rounded-2xl bg-sky-500 px-8 text-xl font-extrabold text-white shadow-[0_5px_0_#0369a1] active:translate-y-1"
-          >
-            Tekrar Dene
-          </button>
-        )}
-      </div>
-    </div>
   );
 }

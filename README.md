@@ -42,7 +42,8 @@ AtomBot/
 
 | Tablo | Amaç |
 |---|---|
-| `families` | Ebeveyn (Telegram ID) = aile; çocuk adı, toplam puan, açılan kutu sayısı |
+| `families` | Ebeveyn (Telegram ID) = aile |
+| `children` | Ailenin çocukları; ad, avatar, toplam puan, açılan kutu sayısı |
 | `tasks` | 13 sabit görev (sabah / okulda / okul sonrası / akşam); tam okul günü = 100 puan, hafta sonu okul görevleri gizlenir |
 | `daily_logs` | aile + görev + gün başına tek kayıt: `pending` / `approved` / `rejected` |
 | `rewards` | Ebeveynin ödülleri (Sürpriz Kutu içeriği) |
@@ -104,8 +105,11 @@ Express, derlenmiş Mini App'i (`apps/web/dist`) aynı porttan sunar; `WEBAPP_UR
 | Komut | Açıklama |
 |---|---|
 | `/start` | Karşılama + Mini App butonu |
-| `/isim Ali` | Çocuğun adını ayarlar |
-| `/durum` | Bugünkü görevler, puan, seri |
+| `/isim Ali` | Çocuk ekler (her çocuk için ayrı yazılır; puan/seri/kutu çocuk başına ayrı) |
+| `/cocuklar` | Çocukları listeler |
+| `/isimdegistir 2 Elif` | 2. çocuğun adını değiştirir |
+| `/cocuksil 2` | 2. çocuğu listeden kaldırır (veriler saklanır; aynı adla `/isim` yazılınca geri gelir) |
+| `/durum` · `/durum 1` | Tüm çocukların özeti · 1. çocuğun görev listesi |
 | `/oduller` | Sürpriz Kutu ödüllerini listeler |
 | `/odulekle Sinema gecesi` | Ödül ekler |
 | `/odulsil 2` | Listedeki 2. ödülü siler |

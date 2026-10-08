@@ -1,7 +1,7 @@
 import { InlineKeyboard, type Bot } from 'grammy';
 import { config } from '../config.js';
 import * as repo from '../db/repo.js';
-import type { Family, Task } from '../types.js';
+import type { Child, Family, Task } from '../types.js';
 import { todayKey } from '../utils/date.js';
 import { bot, escapeHtml } from '../bot/bot.js';
 
@@ -17,9 +17,7 @@ export class AppError extends Error {
 
 const CALLBACK_PATTERN = /^(approve|reject):(\d+)$/;
 
-function childLabel(family: Family): string {
-  return family.child_name ? `Çocuğunuz <b>${escapeHtml(family.child_name)}</b>,` : 'Çocuğunuz';
-}
+const childName = (child: Child) => `<b>${escapeHtml(child.name)}</b>`;
 
 // =====================================================================
 //  1) Çocuk "Yaptım!" butonuna bastı
@@ -31,13 +29,13 @@ function childLabel(family: Family): string {
  *  2. Ebeveynin Telegram sohbetine Onayla / Hayır butonlu mesaj gönderir.
  *  3. Mesaj gönderilemezse (ör. ebeveyn botu engellediyse) isteği geri alır.
  */
-export async function handleChildDone(family: Family, taskId: number): Promise<void> {
+export async function handleChildDone(family: Family, child: Child, taskId: number): Promise<void> {
   const today = todayKey();
   // Pasif görevler ve hafta sonu okul görevleri bugün yapılamaz.
   const task = repo.listTasksForDate(today).find((t) => t.id === taskId);
   if (!task) throw new AppError(404, 'Bu görev bugün yapılacaklar listesinde yok.');
 
-  const result = repo.requestApproval(family.id, task.id, today);
+  const result = repo.requestApproval(child.id, task.id, today);
   if (!result.ok) {
     throw new AppError(
       409,
@@ -54,7 +52,7 @@ export async function handleChildDone(family: Family, taskId: number): Promise<v
   try {
     const message = await bot.api.sendMessage(
       family.telegram_id,
-      `${childLabel(family)} '${task.emoji} <b>${escapeHtml(task.title)}</b>' görevini tamamladığını söylüyor. Onaylıyor musunuz?`,
+      `${child.avatar} Çocuğunuz ${childName(child)}, '${task.emoji} <b>${escapeHtml(task.title)}</b>' görevini tamamladığını söylüyor. Onaylıyor musunuz?`,
       { parse_mode: 'HTML', reply_markup: keyboard },
     );
     repo.setApprovalMessageId(result.log.id, message.message_id);
@@ -72,14 +70,14 @@ export async function handleChildDone(family: Family, taskId: number): Promise<v
 //  2) Ebeveyn inline butona bastı (✅ Onayla / ❌ Hayır, Yapmadı)
 // =====================================================================
 
-function decisionText(family: Family, task: Task, approved: boolean): string {
+function decisionText(child: Child, task: Task, approved: boolean): string {
   const taskName = `${task.emoji} <b>${escapeHtml(task.title)}</b>`;
   if (!approved) {
-    return `❌ ${taskName} onaylanmadı.\nÇocuğunuz görevi yaptıktan sonra tekrar "Yaptım!" diyebilir.`;
+    return `❌ ${childName(child)}: ${taskName} onaylanmadı.\nGörevi yaptıktan sonra tekrar "Yaptım!" diyebilir.`;
   }
-  const { total, inCycle, threshold, availableBoxes } = repo.getPointsSummary(family);
+  const { total, inCycle, threshold, availableBoxes } = repo.getPointsSummary(child);
   const progress = availableBoxes > 0 ? '🎁 Sürpriz Kutu açılmayı bekliyor!' : `Sürpriz Kutuya ${threshold - inCycle} puan kaldı.`;
-  return `✅ ${taskName} onaylandı! <b>+${task.points} puan</b> ⭐\nToplam: ${total} puan. ${progress}`;
+  return `✅ ${childName(child)}: ${taskName} onaylandı! <b>+${task.points} puan</b> ⭐\nToplam: ${total} puan. ${progress}`;
 }
 
 /** Onay/ret callback'lerini bota kaydeder. */
@@ -89,7 +87,8 @@ export function registerApprovalHandlers(target: Bot): void {
     const logId = Number(idText);
 
     const log = repo.getLog(logId);
-    const family = log && repo.getFamilyById(log.family_id);
+    const child = log && repo.getChild(log.child_id);
+    const family = child && repo.getFamilyById(child.family_id);
     if (!log || !family) {
       await ctx.answerCallbackQuery({ text: 'Bu kayıt artık bulunamıyor.' });
       return;
@@ -109,17 +108,19 @@ export function registerApprovalHandlers(target: Bot): void {
     }
 
     await ctx.answerCallbackQuery({
-      text: result.approved ? `Onaylandı! +${result.task.points} puan ⭐` : 'Tamam, çocuğunuz tekrar deneyebilir.',
+      text: result.approved
+        ? `Onaylandı! ${result.child.name} +${result.task.points} puan ⭐`
+        : `Tamam, ${result.child.name} tekrar deneyebilir.`,
     });
     // Mesajı sonuçla güncelle; reply_markup verilmediği için butonlar kalkar.
     await ctx
-      .editMessageText(decisionText(result.family, result.task, result.approved), { parse_mode: 'HTML' })
+      .editMessageText(decisionText(result.child, result.task, result.approved), { parse_mode: 'HTML' })
       .catch((error) => console.warn('Onay mesajı güncellenemedi:', error));
 
     if (result.approved && result.boxUnlocked) {
       await ctx.reply(
-        `🎉 Harika haber! ${config.boxThreshold} puana ulaşıldı ve yeni bir <b>Sürpriz Kutu</b> açıldı.\n` +
-          `Çocuğunuz uygulamadan kutuyu açtığında içinden çıkan ödülü size bildireceğim. 🎁`,
+        `🎉 Harika haber! ${childName(result.child)} ${config.boxThreshold} puana ulaştı ve yeni bir <b>Sürpriz Kutu</b> kazandı.\n` +
+          `Uygulamadan kutuyu açtığında içinden çıkan ödülü size bildireceğim. 🎁`,
         { parse_mode: 'HTML' },
       );
     }
@@ -130,8 +131,8 @@ export function registerApprovalHandlers(target: Bot): void {
 //  3) Sürpriz Kutu açıldığında ebeveyni bilgilendir
 // =====================================================================
 
-export async function notifyBoxOpened(family: Family, rewardTitle: string): Promise<void> {
-  const who = family.child_name ? `<b>${escapeHtml(family.child_name)}</b>` : 'Çocuğunuz';
+export async function notifyBoxOpened(family: Family, child: Child, rewardTitle: string): Promise<void> {
+  const who = `${child.avatar} ${childName(child)}`;
   await bot.api
     .sendMessage(
       family.telegram_id,

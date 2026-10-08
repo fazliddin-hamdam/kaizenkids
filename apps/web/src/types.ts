@@ -12,8 +12,24 @@ export interface TaskView {
   status: TaskStatus;
 }
 
+export interface ChildSummary {
+  id: number;
+  name: string;
+  avatar: string;
+  totalPoints: number;
+  availableBoxes: number;
+  doneToday: number;
+  totalToday: number;
+}
+
+export interface ChildrenResponse {
+  children: ChildSummary[];
+}
+
 export interface DashboardState {
+  childId: number;
   childName: string;
+  avatar: string;
   today: string;
   isSchoolDay: boolean;
   currentPeriod: Period;

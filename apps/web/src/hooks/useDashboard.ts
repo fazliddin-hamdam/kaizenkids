@@ -16,7 +16,7 @@ export interface Transitions {
  *  - ilk yükleme + periyodik yoklama (ebeveyn Telegram'da onayladığında ekran güncellensin)
  *  - "pending → approved/rejected" geçişlerini yakalayıp kutlama/uyarı için bildirir
  */
-export function useDashboard(onTransitions: (t: Transitions) => void) {
+export function useDashboard(childId: number, onTransitions: (t: Transitions) => void) {
   const [state, setState] = useState<DashboardState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busyTaskId, setBusyTaskId] = useState<number | null>(null);
@@ -38,12 +38,12 @@ export function useDashboard(onTransitions: (t: Transitions) => void) {
 
   const refresh = useCallback(async () => {
     try {
-      apply(await api.getState());
+      apply(await api.getState(childId));
       setLoadError(null);
     } catch (error) {
       setLoadError((error as Error).message);
     }
-  }, [apply]);
+  }, [apply, childId]);
 
   useEffect(() => {
     void refresh();
@@ -67,19 +67,19 @@ export function useDashboard(onTransitions: (t: Transitions) => void) {
     async (taskId: number) => {
       setBusyTaskId(taskId);
       try {
-        apply(await api.markDone(taskId));
+        apply(await api.markDone(childId, taskId));
       } finally {
         setBusyTaskId(null);
       }
     },
-    [apply],
+    [apply, childId],
   );
 
   const openBox = useCallback(async () => {
-    const { reward, state: next } = await api.openBox();
+    const { reward, state: next } = await api.openBox(childId);
     apply(next);
     return reward;
-  }, [apply]);
+  }, [apply, childId]);
 
   return { state, loadError, busyTaskId, refresh, markDone, openBox };
 }

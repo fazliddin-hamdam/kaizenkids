@@ -1,11 +1,11 @@
 import { config } from '../config.js';
-import type { DailyLog, Family, LogStatus, Reward, Task } from '../types.js';
+import type { Child, DailyLog, Family, LogStatus, Reward, Task } from '../types.js';
 import { addDays, isSchoolDay } from '../utils/date.js';
 import { db } from './index.js';
-import { DEFAULT_REWARDS } from './schema.js';
+import { CHILD_AVATARS, DEFAULT_REWARDS, MAX_CHILDREN } from './schema.js';
 
 // =====================================================================
-//  Aileler
+//  Aileler (ebeveyn = Telegram kullanıcısı)
 // =====================================================================
 
 export function getFamilyById(id: number): Family | undefined {
@@ -36,8 +36,72 @@ export function listFamilies(): Family[] {
   return db.prepare('SELECT * FROM families ORDER BY id').all() as Family[];
 }
 
-export function setChildName(familyId: number, name: string): void {
-  db.prepare('UPDATE families SET child_name = ? WHERE id = ?').run(name, familyId);
+// =====================================================================
+//  Çocuklar
+// =====================================================================
+
+/** Ailenin aktif çocukları, eklenme sırasına göre. */
+export function listChildren(familyId: number): Child[] {
+  return db
+    .prepare('SELECT * FROM children WHERE family_id = ? AND is_active = 1 ORDER BY id')
+    .all(familyId) as Child[];
+}
+
+export function getChild(id: number): Child | undefined {
+  return db.prepare('SELECT * FROM children WHERE id = ?').get(id) as Child | undefined;
+}
+
+/** Çocuk bu aileye ait ve aktifse döndürür (API'de başka ailenin çocuğuna erişimi engeller). */
+export function getActiveChildOfFamily(familyId: number, childId: number): Child | undefined {
+  return db
+    .prepare('SELECT * FROM children WHERE id = ? AND family_id = ? AND is_active = 1')
+    .get(childId, familyId) as Child | undefined;
+}
+
+function findChildByName(familyId: number, name: string): Child | undefined {
+  // Türkçe büyük/küçük harf farkını gözetmeden karşılaştır ("ali" = "Ali" = "ALİ").
+  const key = name.toLocaleLowerCase('tr-TR');
+  return (db.prepare('SELECT * FROM children WHERE family_id = ? ORDER BY id').all(familyId) as Child[]).find(
+    (c) => c.name.toLocaleLowerCase('tr-TR') === key,
+  );
+}
+
+export type AddChildResult =
+  | { ok: true; child: Child; restored: boolean }
+  | { ok: false; reason: 'DUPLICATE' | 'LIMIT' };
+
+/**
+ * Yeni çocuk ekler. Aynı adla daha önce silinmiş bir çocuk varsa onu geri getirir
+ * (puanları ve geçmişi kaldığı yerden devam eder).
+ */
+export const addChild = db.transaction((familyId: number, name: string): AddChildResult => {
+  const existing = findChildByName(familyId, name);
+  if (existing?.is_active) return { ok: false, reason: 'DUPLICATE' };
+  if (listChildren(familyId).length >= MAX_CHILDREN) return { ok: false, reason: 'LIMIT' };
+
+  if (existing) {
+    db.prepare('UPDATE children SET is_active = 1 WHERE id = ?').run(existing.id);
+    return { ok: true, child: getChild(existing.id)!, restored: true };
+  }
+
+  const { n } = db.prepare('SELECT COUNT(*) AS n FROM children WHERE family_id = ?').get(familyId) as { n: number };
+  const avatar = CHILD_AVATARS[n % CHILD_AVATARS.length];
+  const { lastInsertRowid } = db
+    .prepare('INSERT INTO children (family_id, name, avatar) VALUES (?, ?, ?)')
+    .run(familyId, name, avatar);
+  return { ok: true, child: getChild(Number(lastInsertRowid))!, restored: false };
+});
+
+export function renameChild(familyId: number, childId: number, name: string): 'OK' | 'DUPLICATE' {
+  const other = findChildByName(familyId, name);
+  if (other && other.id !== childId) return 'DUPLICATE';
+  db.prepare('UPDATE children SET name = ? WHERE id = ? AND family_id = ?').run(name, childId, familyId);
+  return 'OK';
+}
+
+/** Çocuğu listeden kaldırır; veriler silinmez (aynı adla /isim yazılırsa geri gelir). */
+export function deactivateChild(familyId: number, childId: number): void {
+  db.prepare('UPDATE children SET is_active = 0 WHERE id = ? AND family_id = ?').run(childId, familyId);
 }
 
 // =====================================================================
@@ -54,8 +118,8 @@ export function getTask(id: number): Task | undefined {
   return db.prepare('SELECT * FROM tasks WHERE id = ?').get(id) as Task | undefined;
 }
 
-export function getLogsForDate(familyId: number, date: string): DailyLog[] {
-  return db.prepare('SELECT * FROM daily_logs WHERE family_id = ? AND log_date = ?').all(familyId, date) as DailyLog[];
+export function getLogsForDate(childId: number, date: string): DailyLog[] {
+  return db.prepare('SELECT * FROM daily_logs WHERE child_id = ? AND log_date = ?').all(childId, date) as DailyLog[];
 }
 
 export function getLog(id: number): DailyLog | undefined {
@@ -72,15 +136,15 @@ export type RequestResult =
  * - Daha önce reddedildiyse tekrar denemeye izin verir.
  * - Zaten bekliyor/onaylandıysa reddeder (ebeveyne mükerrer mesaj gitmesin).
  */
-export const requestApproval = db.transaction((familyId: number, taskId: number, date: string): RequestResult => {
+export const requestApproval = db.transaction((childId: number, taskId: number, date: string): RequestResult => {
   const existing = db
-    .prepare('SELECT * FROM daily_logs WHERE family_id = ? AND task_id = ? AND log_date = ?')
-    .get(familyId, taskId, date) as DailyLog | undefined;
+    .prepare('SELECT * FROM daily_logs WHERE child_id = ? AND task_id = ? AND log_date = ?')
+    .get(childId, taskId, date) as DailyLog | undefined;
 
   if (!existing) {
     const { lastInsertRowid } = db
-      .prepare(`INSERT INTO daily_logs (family_id, task_id, log_date, status) VALUES (?, ?, ?, 'pending')`)
-      .run(familyId, taskId, date);
+      .prepare(`INSERT INTO daily_logs (child_id, task_id, log_date, status) VALUES (?, ?, ?, 'pending')`)
+      .run(childId, taskId, date);
     return { ok: true, log: getLog(Number(lastInsertRowid))!, previousStatus: null };
   }
 
@@ -110,11 +174,11 @@ export function setApprovalMessageId(logId: number, messageId: number): void {
 }
 
 export type DecisionResult =
-  | { ok: true; approved: boolean; log: DailyLog; task: Task; family: Family; boxUnlocked: boolean }
+  | { ok: true; approved: boolean; log: DailyLog; task: Task; child: Child; boxUnlocked: boolean }
   | { ok: false; reason: 'NOT_FOUND' | 'ALREADY_DECIDED'; log?: DailyLog };
 
 /**
- * Ebeveynin kararını işler. Onaylanırsa puanlar aynı transaction içinde aileye eklenir;
+ * Ebeveynin kararını işler. Onaylanırsa puanlar aynı transaction içinde çocuğa eklenir;
  * böylece aynı butona iki kez basılsa bile puan yalnızca bir kez verilir.
  */
 export const decideLog = db.transaction((logId: number, approve: boolean): DecisionResult => {
@@ -123,36 +187,36 @@ export const decideLog = db.transaction((logId: number, approve: boolean): Decis
   if (log.status !== 'pending') return { ok: false, reason: 'ALREADY_DECIDED', log };
 
   const task = getTask(log.task_id)!;
-  const before = getFamilyById(log.family_id)!;
+  const before = getChild(log.child_id)!;
 
   if (approve) {
     db.prepare(
       `UPDATE daily_logs SET status = 'approved', points_awarded = ?, decided_at = datetime('now') WHERE id = ?`,
     ).run(task.points, logId);
-    db.prepare('UPDATE families SET total_points = total_points + ? WHERE id = ?').run(task.points, log.family_id);
+    db.prepare('UPDATE children SET total_points = total_points + ? WHERE id = ?').run(task.points, log.child_id);
   } else {
     db.prepare(`UPDATE daily_logs SET status = 'rejected', decided_at = datetime('now') WHERE id = ?`).run(logId);
   }
 
-  const family = getFamilyById(log.family_id)!;
+  const child = getChild(log.child_id)!;
   const t = config.boxThreshold;
-  const boxUnlocked = Math.floor(family.total_points / t) > Math.floor(before.total_points / t);
+  const boxUnlocked = Math.floor(child.total_points / t) > Math.floor(before.total_points / t);
 
-  return { ok: true, approved: approve, log: getLog(logId)!, task, family, boxUnlocked };
+  return { ok: true, approved: approve, log: getLog(logId)!, task, child, boxUnlocked };
 });
 
 /**
  * "Zinciri kırma" serisi: art arda en az bir görevi onaylanmış gün sayısı.
  * Bugün henüz onay yoksa seri dünden itibaren sayılır (gün içinde sıfırlanmış görünmesin).
  */
-export function getStreak(familyId: number, today: string): number {
+export function getStreak(childId: number, today: string): number {
   const rows = db
     .prepare(
       `SELECT DISTINCT log_date FROM daily_logs
-        WHERE family_id = ? AND status = 'approved' AND log_date <= ?
+        WHERE child_id = ? AND status = 'approved' AND log_date <= ?
         ORDER BY log_date DESC LIMIT 400`,
     )
-    .all(familyId, today) as { log_date: string }[];
+    .all(childId, today) as { log_date: string }[];
   const days = new Set(rows.map((r) => r.log_date));
 
   let cursor = days.has(today) ? today : addDays(today, -1);
@@ -165,7 +229,7 @@ export function getStreak(familyId: number, today: string): number {
 }
 
 // =====================================================================
-//  Ödüller ve Sürpriz Kutu
+//  Ödüller (aile geneli) ve Sürpriz Kutu (çocuk bazında)
 // =====================================================================
 
 export function listActiveRewards(familyId: number): Reward[] {
@@ -183,35 +247,36 @@ export function deactivateReward(familyId: number, rewardId: number): boolean {
 }
 
 /** Puan durumunu hesaplar: kaç kutu kazanıldı, kaç tanesi açılmayı bekliyor, sonraki kutuya ne kadar kaldı. */
-export function getPointsSummary(family: Family) {
+export function getPointsSummary(child: Child) {
   const threshold = config.boxThreshold;
-  const earned = Math.floor(family.total_points / threshold);
+  const earned = Math.floor(child.total_points / threshold);
   return {
-    total: family.total_points,
-    inCycle: family.total_points - earned * threshold,
+    total: child.total_points,
+    inCycle: child.total_points - earned * threshold,
     threshold,
-    availableBoxes: Math.max(0, earned - family.boxes_opened),
+    availableBoxes: Math.max(0, earned - child.boxes_opened),
   };
 }
 
 export type OpenBoxResult =
-  | { ok: true; reward: Reward; family: Family }
+  | { ok: true; reward: Reward; child: Child }
   | { ok: false; reason: 'NO_BOX' | 'NO_REWARDS' };
 
-/** Bir Sürpriz Kutu açar: ebeveynin aktif ödüllerinden rastgele birini seçer ve kaydeder. */
-export const openSurpriseBox = db.transaction((familyId: number): OpenBoxResult => {
-  const family = getFamilyById(familyId)!;
-  if (getPointsSummary(family).availableBoxes <= 0) return { ok: false, reason: 'NO_BOX' };
+/** Çocuğun bir Sürpriz Kutusunu açar: ailenin aktif ödüllerinden rastgele birini seçer ve kaydeder. */
+export const openSurpriseBox = db.transaction((childId: number): OpenBoxResult => {
+  const child = getChild(childId)!;
+  if (getPointsSummary(child).availableBoxes <= 0) return { ok: false, reason: 'NO_BOX' };
 
-  const rewards = listActiveRewards(familyId);
+  const rewards = listActiveRewards(child.family_id);
   if (rewards.length === 0) return { ok: false, reason: 'NO_REWARDS' };
 
   const reward = rewards[Math.floor(Math.random() * rewards.length)];
-  db.prepare('UPDATE families SET boxes_opened = boxes_opened + 1 WHERE id = ?').run(familyId);
-  db.prepare('INSERT INTO reward_claims (family_id, reward_id, reward_title) VALUES (?, ?, ?)').run(
-    familyId,
+  db.prepare('UPDATE children SET boxes_opened = boxes_opened + 1 WHERE id = ?').run(childId);
+  db.prepare('INSERT INTO reward_claims (family_id, child_id, reward_id, reward_title) VALUES (?, ?, ?, ?)').run(
+    child.family_id,
+    childId,
     reward.id,
     reward.title,
   );
-  return { ok: true, reward, family: getFamilyById(familyId)! };
+  return { ok: true, reward, child: getChild(childId)! };
 });

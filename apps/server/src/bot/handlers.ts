@@ -1,21 +1,31 @@
 import { InlineKeyboard, type Bot, type Context } from 'grammy';
 import { config, hasValidWebAppUrl } from '../config.js';
 import * as repo from '../db/repo.js';
+import { MAX_CHILDREN } from '../db/schema.js';
 import { registerApprovalHandlers } from '../services/approval.js';
-import type { Family, LogStatus } from '../types.js';
+import type { Child, Family, LogStatus } from '../types.js';
 import { todayKey } from '../utils/date.js';
 import { escapeHtml } from './bot.js';
 
 const HELP_TEXT = [
   '<b>KaizenKids Komutları</b> 🌱',
   '',
-  '/start — Uygulamayı aç',
-  '/isim <i>Ad</i> — Çocuğunuzun adını ayarla (ör. <code>/isim Ali</code>)',
-  '/durum — Bugünkü görevler ve puan durumu',
+  '<b>Çocuklar</b>',
+  '/isim <i>Ad</i> — Çocuk ekle (her çocuk için ayrı yazın, ör. <code>/isim Ali</code>)',
+  '/cocuklar — Çocukları listele',
+  '/isimdegistir <i>numara Ad</i> — Adı değiştir (ör. <code>/isimdegistir 2 Elif</code>)',
+  '/cocuksil <i>numara</i> — Çocuğu listeden kaldır (veriler saklanır)',
+  '',
+  '<b>Takip</b>',
+  '/durum — Tüm çocukların bugünkü özeti',
+  '/durum <i>numara</i> — Bir çocuğun görev listesi (ör. <code>/durum 1</code>)',
+  '',
+  '<b>Ödüller</b> (tüm çocuklar için ortak)',
   '/oduller — Sürpriz Kutu ödüllerini listele',
   '/odulekle <i>metin</i> — Yeni ödül ekle (ör. <code>/odulekle Sinema gecesi</code>)',
-  '/odulsil <i>numara</i> — Ödülü sil (numara /oduller listesindeki sıradır)',
-  '/yardim — Bu mesaj',
+  '/odulsil <i>numara</i> — Ödülü sil',
+  '',
+  '/start — Uygulamayı aç · /yardim — Bu mesaj',
 ].join('\n');
 
 const STATUS_ICON: Record<LogStatus | 'todo', string> = {
@@ -33,22 +43,43 @@ function openAppKeyboard(): InlineKeyboard | undefined {
   return hasValidWebAppUrl ? new InlineKeyboard().webApp('🚀 KaizenKids\'i Aç', config.webAppUrl) : undefined;
 }
 
+/** "Ali" gibi kullanıcı girdisini temizler: fazla boşlukları atar, ilk harfi büyütür, 30 karakterle sınırlar. */
+function cleanName(raw: string): string {
+  const name = raw.replace(/\s+/g, ' ').trim().slice(0, 30);
+  return name.charAt(0).toLocaleUpperCase('tr-TR') + name.slice(1);
+}
+
+const childLine = (c: Child, i: number) => `${i + 1}. ${c.avatar} <b>${escapeHtml(c.name)}</b> — ⭐ ${c.total_points} puan`;
+
+function childrenListText(children: Child[]): string {
+  if (children.length === 0) return 'Henüz çocuk eklenmedi. Eklemek için: <code>/isim Ali</code>';
+  return children.map(childLine).join('\n');
+}
+
+/** Komuttaki sıra numarasına göre çocuğu bulur (1'den başlar). */
+function childByNumber(family: Family, text: string): Child | undefined {
+  const index = Number.parseInt(text, 10) - 1;
+  return Number.isInteger(index) ? repo.listChildren(family.id)[index] : undefined;
+}
+
 export function registerBotHandlers(bot: Bot): void {
   // Bot yalnızca özel sohbetlerde çalışır (bir aile = bir ebeveyn sohbeti).
   const pm = bot.chatType('private');
 
   pm.command('start', async (ctx) => {
-    const family = familyOf(ctx);
-    const name = family.child_name ? escapeHtml(family.child_name) : 'çocuğunuz';
+    const children = repo.listChildren(familyOf(ctx).id);
     await ctx.reply(
       [
         `Merhaba ${escapeHtml(ctx.from.first_name)}! 👋 <b>KaizenKids</b>'e hoş geldiniz.`,
         '',
-        `Her gün %1 daha iyi! 🌱 Uygulamayı ${name} için açın; görevini tamamladığında "Yaptım!" diyecek, ` +
-          'ben de onaylamanız için size buraya mesaj atacağım.',
+        'Her gün %1 daha iyi! 🌱 Uygulamayı açınca çocuğunuz adını seçer; görevini tamamladığında ' +
+          '"Yaptım!" der, ben de onaylamanız için size buraya mesaj atarım.',
         '',
         `⭐ Onaylanan görevler puan kazandırır, her ${config.boxThreshold} puanda bir 🎁 <b>Sürpriz Kutu</b> açılır.`,
-        family.child_name ? '' : '\n👉 Önce çocuğunuzun adını ayarlayın: <code>/isim Ali</code>',
+        '',
+        children.length
+          ? `<b>Çocuklarınız</b>\n${childrenListText(children)}\n\nBaşka çocuk eklemek için: <code>/isim Ad</code>`
+          : '👉 Önce çocuğunuzu ekleyin: <code>/isim Ali</code>\nBirden fazla çocuğunuz varsa her biri için ayrı yazın.',
         '',
         'Tüm komutlar için: /yardim',
       ].join('\n'),
@@ -63,47 +94,150 @@ export function registerBotHandlers(bot: Bot): void {
 
   pm.command(['yardim', 'help'], (ctx) => ctx.reply(HELP_TEXT, { parse_mode: 'HTML' }));
 
+  // ---------- Çocuklar ----------
+
   pm.command('isim', async (ctx) => {
-    const name = ctx.match.trim().slice(0, 30);
+    const family = familyOf(ctx);
+    const name = cleanName(ctx.match);
     if (!name) {
-      await ctx.reply('Lütfen bir isim yazın. Örnek: /isim Ali');
+      await ctx.reply(
+        `Çocuk eklemek için adını yazın. Örnek: <code>/isim Ali</code>\n\n${childrenListText(repo.listChildren(family.id))}`,
+        { parse_mode: 'HTML' },
+      );
       return;
     }
+
+    const result = repo.addChild(family.id, name);
+    if (!result.ok) {
+      await ctx.reply(
+        result.reason === 'DUPLICATE'
+          ? `<b>${escapeHtml(name)}</b> zaten listede. Adı değiştirmek için: <code>/isimdegistir 1 YeniAd</code>`
+          : `En fazla ${MAX_CHILDREN} çocuk eklenebilir. Önce /cocuksil ile birini kaldırın.`,
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+
+    const { child, restored } = result;
+    await ctx.reply(
+      [
+        restored
+          ? `${child.avatar} <b>${escapeHtml(child.name)}</b> geri eklendi; puanları ve serisi kaldığı yerden devam ediyor. 🎉`
+          : `${child.avatar} <b>${escapeHtml(child.name)}</b> eklendi! 🎉`,
+        '',
+        `<b>Çocuklarınız</b>\n${childrenListText(repo.listChildren(family.id))}`,
+        '',
+        'Uygulamayı açınca "Bugün kim oynuyor?" ekranından adını seçebilir.',
+      ].join('\n'),
+      { parse_mode: 'HTML', reply_markup: openAppKeyboard() },
+    );
+  });
+
+  pm.command('cocuklar', async (ctx) => {
+    const children = repo.listChildren(familyOf(ctx).id);
+    await ctx.reply(`<b>Çocuklarınız</b>\n\n${childrenListText(children)}`, { parse_mode: 'HTML' });
+  });
+
+  pm.command('isimdegistir', async (ctx) => {
     const family = familyOf(ctx);
-    repo.setChildName(family.id, name);
-    await ctx.reply(`Tamamdır! Uygulama artık <b>${escapeHtml(name)}</b> için hazır. 🎉`, {
+    const [numberText = '', ...rest] = ctx.match.trim().split(/\s+/);
+    const child = childByNumber(family, numberText);
+    const name = cleanName(rest.join(' '));
+    if (!child || !name) {
+      await ctx.reply(
+        `Kullanım: <code>/isimdegistir 2 Elif</code>\n\n${childrenListText(repo.listChildren(family.id))}`,
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+    if (repo.renameChild(family.id, child.id, name) === 'DUPLICATE') {
+      await ctx.reply(`<b>${escapeHtml(name)}</b> adında başka bir çocuk zaten var.`, { parse_mode: 'HTML' });
+      return;
+    }
+    await ctx.reply(`✏️ ${escapeHtml(child.name)} → <b>${escapeHtml(name)}</b> olarak değiştirildi.`, {
       parse_mode: 'HTML',
-      reply_markup: openAppKeyboard(),
     });
   });
 
-  pm.command('durum', async (ctx) => {
+  pm.command('cocuksil', async (ctx) => {
     const family = familyOf(ctx);
-    const today = todayKey();
-    const statusByTask = new Map(repo.getLogsForDate(family.id, today).map((l) => [l.task_id, l.status]));
-    const lines = repo
-      .listTasksForDate(today)
-      .map((t) => `${STATUS_ICON[statusByTask.get(t.id) ?? 'todo']} ${t.emoji} ${escapeHtml(t.title)} (+${t.points})`);
-    const points = repo.getPointsSummary(family);
-    const streak = repo.getStreak(family.id, today);
-
+    const child = childByNumber(family, ctx.match.trim());
+    if (!child) {
+      await ctx.reply(`Kullanım: <code>/cocuksil 2</code>\n\n${childrenListText(repo.listChildren(family.id))}`, {
+        parse_mode: 'HTML',
+      });
+      return;
+    }
+    repo.deactivateChild(family.id, child.id);
     await ctx.reply(
-      [
-        `<b>Bugünün Durumu</b> (${today})`,
-        '',
-        ...lines,
-        '',
-        `⭐ Toplam puan: <b>${points.total}</b>`,
-        points.availableBoxes > 0
-          ? `🎁 Açılmayı bekleyen kutu: <b>${points.availableBoxes}</b>`
-          : `🎁 Sürpriz Kutuya ${points.threshold - points.inCycle} puan kaldı`,
-        `🔥 Seri: ${streak} gün`,
-        '',
-        '⬜️ yapılmadı · ⏳ onay bekliyor · ✅ onaylandı · 🔁 reddedildi',
-      ].join('\n'),
+      `🗑️ <b>${escapeHtml(child.name)}</b> listeden kaldırıldı.\n` +
+        `Verileri saklanıyor; geri eklemek için: <code>/isim ${escapeHtml(child.name)}</code>`,
       { parse_mode: 'HTML' },
     );
   });
+
+  // ---------- Takip ----------
+
+  pm.command('durum', async (ctx) => {
+    const family = familyOf(ctx);
+    const children = repo.listChildren(family.id);
+    const today = todayKey();
+    const tasks = repo.listTasksForDate(today);
+
+    if (children.length === 0) {
+      await ctx.reply(childrenListText(children), { parse_mode: 'HTML' });
+      return;
+    }
+
+    // /durum 2 → tek çocuğun ayrıntılı görev listesi
+    const selected = ctx.match.trim() ? childByNumber(family, ctx.match.trim()) : undefined;
+    if (selected) {
+      const statusByTask = new Map(repo.getLogsForDate(selected.id, today).map((l) => [l.task_id, l.status]));
+      const points = repo.getPointsSummary(selected);
+      await ctx.reply(
+        [
+          `${selected.avatar} <b>${escapeHtml(selected.name)}</b> — Bugün (${today})`,
+          '',
+          ...tasks.map(
+            (t) => `${STATUS_ICON[statusByTask.get(t.id) ?? 'todo']} ${t.emoji} ${escapeHtml(t.title)} (+${t.points})`,
+          ),
+          '',
+          `⭐ Toplam puan: <b>${points.total}</b>`,
+          points.availableBoxes > 0
+            ? `🎁 Açılmayı bekleyen kutu: <b>${points.availableBoxes}</b>`
+            : `🎁 Sürpriz Kutuya ${points.threshold - points.inCycle} puan kaldı`,
+          `🔥 Seri: ${repo.getStreak(selected.id, today)} gün`,
+          '',
+          '⬜️ yapılmadı · ⏳ onay bekliyor · ✅ onaylandı · 🔁 reddedildi',
+        ].join('\n'),
+        { parse_mode: 'HTML' },
+      );
+      return;
+    }
+
+    // /durum → tüm çocukların kısa özeti
+    const blocks = children.map((child, i) => {
+      const logs = repo.getLogsForDate(child.id, today);
+      const done = logs.filter((l) => l.status === 'approved').length;
+      const pending = logs
+        .filter((l) => l.status === 'pending')
+        .map((l) => tasks.find((t) => t.id === l.task_id)?.title)
+        .filter(Boolean);
+      const points = repo.getPointsSummary(child);
+      return [
+        `${i + 1}. ${child.avatar} <b>${escapeHtml(child.name)}</b>`,
+        `   ✅ ${done}/${tasks.length} görev · ⭐ ${points.total} puan · 🔥 ${repo.getStreak(child.id, today)} gün` +
+          (points.availableBoxes > 0 ? ` · 🎁 ${points.availableBoxes} kutu` : ''),
+        ...(pending.length ? [`   ⏳ Onay bekleyen: ${pending.map((p) => escapeHtml(p!)).join(', ')}`] : []),
+      ].join('\n');
+    });
+    await ctx.reply(
+      [`<b>Bugünün Durumu</b> (${today})`, '', ...blocks, '', 'Ayrıntı için: <code>/durum 1</code>'].join('\n'),
+      { parse_mode: 'HTML' },
+    );
+  });
+
+  // ---------- Ödüller ----------
 
   pm.command('oduller', async (ctx) => {
     const rewards = repo.listActiveRewards(familyOf(ctx).id);
@@ -147,7 +281,10 @@ export async function configureBotProfile(bot: Bot): Promise<void> {
   await bot.api.setMyCommands([
     { command: 'start', description: 'Uygulamayı aç' },
     { command: 'durum', description: 'Bugünkü görevler ve puanlar' },
-    { command: 'isim', description: 'Çocuğun adını ayarla' },
+    { command: 'isim', description: 'Çocuk ekle' },
+    { command: 'cocuklar', description: 'Çocukları listele' },
+    { command: 'isimdegistir', description: 'Çocuğun adını değiştir' },
+    { command: 'cocuksil', description: 'Çocuğu listeden kaldır' },
     { command: 'oduller', description: 'Sürpriz Kutu ödülleri' },
     { command: 'odulekle', description: 'Yeni ödül ekle' },
     { command: 'odulsil', description: 'Ödül sil' },
