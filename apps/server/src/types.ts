@@ -20,9 +20,12 @@ export interface Child {
   total_points: number;
   boxes_opened: number;
   big_boxes_opened: number;
+  gender: Gender | null;
   is_active: number;
   created_at: string;
 }
+
+export type Gender = 'boy' | 'girl';
 
 /** small: her BOX_THRESHOLD puanda Sürpriz Kutu · big: her BIG_BOX_THRESHOLD puanda Büyük Hediye */
 export type RewardKind = 'small' | 'big';
@@ -76,6 +79,7 @@ export interface ChildSummary {
   id: number;
   name: string;
   avatar: string;
+  gender: Gender | null;
   totalPoints: number;
   todayPoints: number;
   availableBoxes: number;
@@ -92,6 +96,7 @@ export interface DashboardState {
   childId: number;
   childName: string;
   avatar: string;
+  gender: Gender | null;
   today: string;
   /** Hafta içi mi? Hafta sonu okul görevleri gösterilmez. */
   isSchoolDay: boolean;

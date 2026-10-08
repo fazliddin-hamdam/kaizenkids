@@ -2,7 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Database from 'better-sqlite3';
 import { config } from '../config.js';
-import { CHILD_AVATARS, DEFAULT_BIG_REWARDS, SCHEMA_SQL, SEED_TASKS, dailyLogsTableSql, tasksTableSql } from './schema.js';
+import {
+  DEFAULT_AVATAR,
+  DEFAULT_BIG_REWARDS,
+  SCHEMA_SQL,
+  SEED_TASKS,
+  dailyLogsTableSql,
+  tasksTableSql,
+} from './schema.js';
 
 fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
 
@@ -45,7 +52,7 @@ const MIGRATIONS: Array<() => void> = [
     `);
     db.exec(`
       INSERT INTO children (id, family_id, name, avatar, total_points, boxes_opened, created_at)
-        SELECT f.id, f.id, COALESCE(f.child_name, 'Çocuğum'), '${CHILD_AVATARS[0]}',
+        SELECT f.id, f.id, COALESCE(f.child_name, 'Çocuğum'), '🦸',
                f.total_points, f.boxes_opened, f.created_at
           FROM families f
          WHERE f.child_name IS NOT NULL OR f.total_points > 0 OR f.boxes_opened > 0
@@ -81,6 +88,15 @@ const MIGRATIONS: Array<() => void> = [
     for (const { id } of db.prepare('SELECT id FROM families').all() as { id: number }[]) {
       for (const title of DEFAULT_BIG_REWARDS) insert.run(id, title);
     }
+  },
+
+  // 4) Cinsiyet: ebeveyn erkek/kız seçer, avatar ona göre verilir. Eski çocuklar cinsiyet seçilene
+  //    kadar nötr avatarla görünür (bot /start ve /cocuklar'da seçim ister).
+  () => {
+    db.exec(`
+      ALTER TABLE children ADD COLUMN gender TEXT CHECK (gender IN ('boy', 'girl'));
+      UPDATE children SET avatar = '${DEFAULT_AVATAR}';
+    `);
   },
 ];
 

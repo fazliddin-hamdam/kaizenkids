@@ -3,6 +3,7 @@
 export type Period = 'morning' | 'school' | 'afternoon' | 'evening';
 export type TaskStatus = 'todo' | 'pending' | 'approved' | 'rejected';
 export type RewardKind = 'small' | 'big';
+export type Gender = 'boy' | 'girl';
 
 export interface TaskView {
   id: number;
@@ -17,6 +18,7 @@ export interface ChildSummary {
   id: number;
   name: string;
   avatar: string;
+  gender: Gender | null;
   totalPoints: number;
   todayPoints: number;
   availableBoxes: number;
@@ -33,6 +35,7 @@ export interface DashboardState {
   childId: number;
   childName: string;
   avatar: string;
+  gender: Gender | null;
   today: string;
   isSchoolDay: boolean;
   currentPeriod: Period;

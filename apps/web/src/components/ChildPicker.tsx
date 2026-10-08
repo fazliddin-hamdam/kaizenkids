@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api } from '../lib/api';
 import { haptic } from '../lib/telegram';
 import type { ChildSummary } from '../types';
+import { genderStyle } from './genderStyle';
 import { SplashScreen } from './SplashScreen';
 
 interface Props {
@@ -9,15 +10,6 @@ interface Props {
   onPick: (child: ChildSummary, childCount: number) => void;
 }
 
-/** Kartlara sırayla verilen renkler (Tailwind sınıfları tam yazılmalı). */
-const CARD_COLORS = [
-  { avatar: 'from-yellow-200 to-pink-300', shadow: 'shadow-[0_6px_0_#f9a8d4]' },
-  { avatar: 'from-sky-200 to-indigo-300', shadow: 'shadow-[0_6px_0_#a5b4fc]' },
-  { avatar: 'from-lime-200 to-emerald-300', shadow: 'shadow-[0_6px_0_#6ee7b7]' },
-  { avatar: 'from-orange-200 to-rose-300', shadow: 'shadow-[0_6px_0_#fda4af]' },
-  { avatar: 'from-violet-200 to-fuchsia-300', shadow: 'shadow-[0_6px_0_#f0abfc]' },
-  { avatar: 'from-cyan-200 to-teal-300', shadow: 'shadow-[0_6px_0_#5eead4]' },
-];
 
 /**
  * "Bugün kim oynuyor?" — uygulama her açıldığında çocuk seçilir.
@@ -73,14 +65,14 @@ export function ChildPicker({ onPick }: Props) {
   return (
     <main className="mx-auto flex min-h-dvh max-w-md flex-col gap-6 px-4 pt-8 pb-10">
       <header className="text-center">
-        <div className="animate-wiggle inline-block text-7xl">🌈</div>
+        <div className="animate-wiggle inline-block text-7xl">⭐</div>
         <h1 className="mt-2 text-4xl font-extrabold text-fuchsia-600">Bugün kim oynuyor?</h1>
         <p className="text-xl font-bold text-slate-500">Adına dokun!</p>
       </header>
 
       <ul className="flex flex-col gap-4">
         {children.map((child, i) => {
-          const color = CARD_COLORS[i % CARD_COLORS.length];
+          const color = genderStyle(child.gender);
           return (
             <li key={child.id} className="animate-pop" style={{ animationDelay: `${i * 80}ms` }}>
               <button
@@ -92,7 +84,7 @@ export function ChildPicker({ onPick }: Props) {
                 className={`flex w-full items-center gap-4 rounded-3xl bg-white p-4 text-left transition active:translate-y-1 ${color.shadow}`}
               >
                 <span
-                  className={`grid size-20 shrink-0 place-items-center rounded-full bg-linear-to-br text-5xl ${color.avatar}`}
+                  className={`grid size-20 shrink-0 place-items-center rounded-full text-5xl ${color.avatar}`}
                 >
                   {child.avatar}
                 </span>

@@ -37,7 +37,8 @@ CREATE TABLE IF NOT EXISTS ${name} (
   boxes_opened  INTEGER NOT NULL DEFAULT 0,
   is_active     INTEGER NOT NULL DEFAULT 1,      -- 0: /cocuksil ile kaldırıldı (veriler saklanır)
   created_at    TEXT NOT NULL DEFAULT (datetime('now')),
-  big_boxes_opened  INTEGER NOT NULL DEFAULT 0   -- açılan Büyük Hediye Kutusu sayısı
+  big_boxes_opened  INTEGER NOT NULL DEFAULT 0,  -- açılan Büyük Hediye Kutusu sayısı
+  gender        TEXT CHECK (gender IN ('boy', 'girl'))   -- NULL: ebeveyn henüz seçmedi
 );`;
 }
 
@@ -121,8 +122,14 @@ export const SEED_TASKS = [
   { code: 'sleep_early', title: 'Erken Uyu (21:30)', emoji: '😴', period: 'evening', points: 10 },
 ] as const;
 
-/** Çocuklara sırayla verilen avatarlar. */
-export const CHILD_AVATARS = ['🦸', '🧚', '🦖', '🦄', '🐼', '🚀', '🐯', '🐬'];
+/** Cinsiyete göre avatarlar; ailedeki aynı cinsiyetten çocuklara sırayla verilir. */
+export const AVATARS = {
+  boy: ['👦', '🦸‍♂️', '🤴', '🧙‍♂️', '🦁', '🐯'],
+  girl: ['👧', '🦸‍♀️', '👸', '🧚‍♀️', '🦋', '🐰'],
+} as const;
+
+/** Cinsiyet seçilene kadar gösterilen avatar. */
+export const DEFAULT_AVATAR = '🙂';
 
 /** Bir ailede en fazla kaç aktif çocuk olabilir. */
 export const MAX_CHILDREN = 6;

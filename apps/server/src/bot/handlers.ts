@@ -3,7 +3,7 @@ import { config, hasValidWebAppUrl } from '../config.js';
 import * as repo from '../db/repo.js';
 import { MAX_CHILDREN } from '../db/schema.js';
 import { registerApprovalHandlers } from '../services/approval.js';
-import type { Child, Family, LogStatus, RewardKind } from '../types.js';
+import type { Child, Family, Gender, LogStatus, RewardKind } from '../types.js';
 import { todayKey } from '../utils/date.js';
 import { escapeHtml } from './bot.js';
 
@@ -11,7 +11,8 @@ const HELP_TEXT = [
   '<b>KaizenKids Komutları</b> 🌱',
   '',
   '<b>Çocuklar</b>',
-  '/isim <i>Ad</i> — Çocuk ekle (her çocuk için ayrı yazın, ör. <code>/isim Ali</code>)',
+  '/isim <i>Ad</i> — Çocuk ekle, ardından cinsiyet sorulur (ör. <code>/isim Ali</code> ya da <code>/isim Ayşe kız</code>)',
+  '/cinsiyet <i>numara</i> — Çocuğun cinsiyetini seç/değiştir',
   '/cocuklar — Çocukları listele',
   '/isimdegistir <i>numara Ad</i> — Adı değiştir (ör. <code>/isimdegistir 2 Elif</code>)',
   '/cocuksil <i>numara</i> — Çocuğu listeden kaldır (veriler saklanır)',
@@ -94,6 +95,33 @@ function childrenListText(children: Child[]): string {
   return children.map(childLine).join('\n');
 }
 
+const GENDER_WORDS: Record<string, Gender> = { erkek: 'boy', oğlan: 'boy', oglan: 'boy', kız: 'girl', kiz: 'girl' };
+const GENDER_LABEL: Record<Gender, string> = { boy: '👦 Erkek', girl: '👧 Kız' };
+
+/** "/isim Ali erkek" → { name: "Ali", gender: "boy" }; cinsiyet kelimesi yoksa gender undefined. */
+function parseNameAndGender(raw: string): { name: string; gender?: Gender } {
+  const words = raw.trim().split(/\s+/).filter(Boolean);
+  // Tek kelime yazıldıysa o kelime isimdir ("/isim Kız" gibi nadir durumlar dahil).
+  const gender = words.length > 1 ? GENDER_WORDS[words.at(-1)!.toLocaleLowerCase('tr-TR')] : undefined;
+  if (gender) words.pop();
+  return { name: cleanName(words.join(' ')), gender };
+}
+
+const genderKeyboard = (childId: number) =>
+  new InlineKeyboard().text(GENDER_LABEL.boy, `gender:${childId}:boy`).text(GENDER_LABEL.girl, `gender:${childId}:girl`);
+
+async function askGender(ctx: Context, child: Child): Promise<void> {
+  await ctx.reply(`👉 Lütfen <b>${escapeHtml(child.name)}</b> için cinsiyet seçin:`, {
+    parse_mode: 'HTML',
+    reply_markup: genderKeyboard(child.id),
+  });
+}
+
+/** Cinsiyeti seçilmemiş çocuklar için tek tek soru sorar. */
+async function askMissingGenders(ctx: Context, children: Child[]): Promise<void> {
+  for (const child of children.filter((c) => !c.gender)) await askGender(ctx, child);
+}
+
 /** Komuttaki sıra numarasına göre çocuğu bulur (1'den başlar). */
 function childByNumber(family: Family, text: string): Child | undefined {
   const index = Number.parseInt(text, 10) - 1;
@@ -123,6 +151,7 @@ export function registerBotHandlers(bot: Bot): void {
       ].join('\n'),
       { parse_mode: 'HTML', reply_markup: openAppKeyboard() },
     );
+    await askMissingGenders(ctx, children);
     if (hasValidWebAppUrl) {
       await setChatMenuButton(bot, ctx.chat.id);
     } else {
@@ -136,16 +165,16 @@ export function registerBotHandlers(bot: Bot): void {
 
   pm.command('isim', async (ctx) => {
     const family = familyOf(ctx);
-    const name = cleanName(ctx.match);
+    const { name, gender } = parseNameAndGender(ctx.match);
     if (!name) {
       await ctx.reply(
-        `Çocuk eklemek için adını yazın. Örnek: <code>/isim Ali</code>\n\n${childrenListText(repo.listChildren(family.id))}`,
+        `Çocuk eklemek için adını yazın. Örnek: <code>/isim Ali</code> ya da <code>/isim Ayşe kız</code>\n\n${childrenListText(repo.listChildren(family.id))}`,
         { parse_mode: 'HTML' },
       );
       return;
     }
 
-    const result = repo.addChild(family.id, name);
+    const result = repo.addChild(family.id, name, gender);
     if (!result.ok) {
       await ctx.reply(
         result.reason === 'DUPLICATE'
@@ -167,13 +196,48 @@ export function registerBotHandlers(bot: Bot): void {
         '',
         'Uygulamayı açınca "Bugün kim oynuyor?" ekranından adını seçebilir.',
       ].join('\n'),
-      { parse_mode: 'HTML', reply_markup: openAppKeyboard() },
+      { parse_mode: 'HTML', reply_markup: child.gender ? openAppKeyboard() : undefined },
     );
+    if (!child.gender) await askGender(ctx, child);
+  });
+
+  pm.command('cinsiyet', async (ctx) => {
+    const family = familyOf(ctx);
+    const child = childByNumber(family, ctx.match.trim());
+    if (!child) {
+      await ctx.reply(`Kullanım: <code>/cinsiyet 1</code>\n\n${childrenListText(repo.listChildren(family.id))}`, {
+        parse_mode: 'HTML',
+      });
+      return;
+    }
+    await askGender(ctx, child);
+  });
+
+  // Cinsiyet butonları: gender:<çocukId>:<boy|girl>. Yalnızca çocuğun kendi ebeveyni seçebilir.
+  bot.callbackQuery(/^gender:(\d+):(boy|girl)$/, async (ctx) => {
+    const [, idText, gender] = ctx.match as RegExpMatchArray;
+    const family = repo.getFamilyByTelegramId(ctx.from.id);
+    const child = family && repo.setChildGender(family.id, Number(idText), gender as Gender);
+    if (!child?.gender) {
+      await ctx.answerCallbackQuery({ text: 'Bu çocuk bulunamadı.', show_alert: true });
+      return;
+    }
+    await ctx.answerCallbackQuery({ text: `${child.name}: ${GENDER_LABEL[child.gender]}` });
+    await ctx
+      .editMessageText(
+        `${child.avatar} <b>${escapeHtml(child.name)}</b> — ${child.gender === 'boy' ? 'Erkek' : 'Kız'} olarak kaydedildi. ✅`,
+        { parse_mode: 'HTML', reply_markup: openAppKeyboard() },
+      )
+      .catch(() => undefined);
   });
 
   pm.command('cocuklar', async (ctx) => {
     const children = repo.listChildren(familyOf(ctx).id);
-    await ctx.reply(`<b>Çocuklarınız</b>\n\n${childrenListText(children)}`, { parse_mode: 'HTML' });
+    await ctx.reply(
+      `<b>Çocuklarınız</b>\n\n${childrenListText(children)}\n\nCinsiyeti değiştirmek için: <code>/cinsiyet 1</code>`,
+      { parse_mode: 'HTML' },
+    );
+    await askMissingGenders(ctx, children);
   });
 
   pm.command('isimdegistir', async (ctx) => {
@@ -332,6 +396,7 @@ export async function configureBotProfile(bot: Bot): Promise<void> {
     { command: 'isim', description: 'Çocuk ekle' },
     { command: 'cocuklar', description: 'Çocukları listele' },
     { command: 'isimdegistir', description: 'Çocuğun adını değiştir' },
+    { command: 'cinsiyet', description: 'Çocuğun cinsiyetini seç' },
     { command: 'cocuksil', description: 'Çocuğu listeden kaldır' },
     { command: 'oduller', description: 'Sürpriz Kutu ödülleri' },
     { command: 'odulekle', description: 'Yeni ödül ekle' },

@@ -4,6 +4,7 @@ import { burst } from '../lib/confetti';
 import { haptic } from '../lib/telegram';
 import type { Period, RewardKind, TaskView } from '../types';
 import { Celebration } from './Celebration';
+import { genderStyle } from './genderStyle';
 import { PeriodTabs } from './PeriodTabs';
 import { periodMeta } from './periods';
 import { ProgressCard } from './ProgressCard';
@@ -80,7 +81,9 @@ export function Dashboard({ childId, onSwitchChild }: Props) {
     <main className="mx-auto flex max-w-md flex-col gap-5 px-4 pt-5 pb-10">
       {/* Selamlama */}
       <header className="flex items-center gap-4 rounded-3xl bg-white/90 p-4 shadow-lg">
-        <div className="animate-float grid size-16 shrink-0 place-items-center rounded-full bg-linear-to-br from-yellow-200 to-pink-300 text-4xl">
+        <div
+          className={`animate-float grid size-16 shrink-0 place-items-center rounded-full text-4xl ${genderStyle(state.gender).avatar}`}
+        >
           {state.avatar}
         </div>
         <div className="min-w-0 flex-1">

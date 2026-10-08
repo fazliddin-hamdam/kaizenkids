@@ -105,7 +105,8 @@ Express, derlenmiş Mini App'i (`apps/web/dist`) aynı porttan sunar; `WEBAPP_UR
 | Komut | Açıklama |
 |---|---|
 | `/start` | Karşılama + Mini App butonu |
-| `/isim Ali` | Çocuk ekler (her çocuk için ayrı yazılır; puan/seri/kutu çocuk başına ayrı) |
+| `/isim Ali` | Çocuk ekler ve cinsiyetini sorar (👦 Erkek / 👧 Kız); kısa yol: `/isim Ayşe kız` |
+| `/cinsiyet 1` | 1. çocuğun cinsiyetini seçer/değiştirir (avatar buna göre verilir) |
 | `/cocuklar` | Çocukları listeler |
 | `/isimdegistir 2 Elif` | 2. çocuğun adını değiştirir |
 | `/cocuksil 2` | 2. çocuğu listeden kaldırır (veriler saklanır; aynı adla `/isim` yazılınca geri gelir) |

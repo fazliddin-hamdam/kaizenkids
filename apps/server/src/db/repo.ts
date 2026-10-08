@@ -1,8 +1,8 @@
 import { config } from '../config.js';
-import type { Child, DailyLog, Family, LogStatus, Reward, RewardKind, Task } from '../types.js';
+import type { Child, DailyLog, Family, Gender, LogStatus, Reward, RewardKind, Task } from '../types.js';
 import { addDays, isSchoolDay } from '../utils/date.js';
 import { db } from './index.js';
-import { CHILD_AVATARS, DEFAULT_BIG_REWARDS, DEFAULT_REWARDS, MAX_CHILDREN } from './schema.js';
+import { AVATARS, DEFAULT_AVATAR, DEFAULT_BIG_REWARDS, DEFAULT_REWARDS, MAX_CHILDREN } from './schema.js';
 
 // =====================================================================
 //  Aileler (ebeveyn = Telegram kullanıcısı)
@@ -71,27 +71,50 @@ export type AddChildResult =
   | { ok: true; child: Child; restored: boolean }
   | { ok: false; reason: 'DUPLICATE' | 'LIMIT' };
 
+/** Ailede aynı cinsiyetten kaçıncı çocuk olduğuna göre avatar seçer (👦, 🦸‍♂️, 🤴 …). */
+function pickAvatar(familyId: number, gender: Gender, exceptChildId = 0): string {
+  const { n } = db
+    .prepare('SELECT COUNT(*) AS n FROM children WHERE family_id = ? AND gender = ? AND id != ?')
+    .get(familyId, gender, exceptChildId) as { n: number };
+  const list = AVATARS[gender];
+  return list[n % list.length];
+}
+
 /**
  * Yeni çocuk ekler. Aynı adla daha önce silinmiş bir çocuk varsa onu geri getirir
- * (puanları ve geçmişi kaldığı yerden devam eder).
+ * (puanları ve geçmişi kaldığı yerden devam eder). Cinsiyet verilmezse nötr avatarla eklenir;
+ * bot ardından cinsiyeti sorar (setChildGender).
  */
-export const addChild = db.transaction((familyId: number, name: string): AddChildResult => {
+export const addChild = db.transaction((familyId: number, name: string, gender?: Gender): AddChildResult => {
   const existing = findChildByName(familyId, name);
   if (existing?.is_active) return { ok: false, reason: 'DUPLICATE' };
   if (listChildren(familyId).length >= MAX_CHILDREN) return { ok: false, reason: 'LIMIT' };
 
   if (existing) {
     db.prepare('UPDATE children SET is_active = 1 WHERE id = ?').run(existing.id);
-    return { ok: true, child: getChild(existing.id)!, restored: true };
+    const restored = gender ? setChildGender(familyId, existing.id, gender)! : getChild(existing.id)!;
+    return { ok: true, child: restored, restored: true };
   }
 
-  const { n } = db.prepare('SELECT COUNT(*) AS n FROM children WHERE family_id = ?').get(familyId) as { n: number };
-  const avatar = CHILD_AVATARS[n % CHILD_AVATARS.length];
+  const avatar = gender ? pickAvatar(familyId, gender) : DEFAULT_AVATAR;
   const { lastInsertRowid } = db
-    .prepare('INSERT INTO children (family_id, name, avatar) VALUES (?, ?, ?)')
-    .run(familyId, name, avatar);
+    .prepare('INSERT INTO children (family_id, name, avatar, gender) VALUES (?, ?, ?, ?)')
+    .run(familyId, name, avatar, gender ?? null);
   return { ok: true, child: getChild(Number(lastInsertRowid))!, restored: false };
 });
+
+/** Cinsiyeti kaydeder ve avatarı ona göre yeniler. Çocuk bu aileye ait değilse undefined döner. */
+export function setChildGender(familyId: number, childId: number, gender: Gender): Child | undefined {
+  const child = getChild(childId);
+  if (!child || child.family_id !== familyId) return undefined;
+  if (child.gender === gender) return child; // aynı seçim: avatar değişmesin
+  db.prepare('UPDATE children SET gender = ?, avatar = ? WHERE id = ?').run(
+    gender,
+    pickAvatar(familyId, gender, childId),
+    childId,
+  );
+  return getChild(childId);
+}
 
 export function renameChild(familyId: number, childId: number, name: string): 'OK' | 'DUPLICATE' {
   const other = findChildByName(familyId, name);
